@@ -49,4 +49,11 @@ public class CountriesController : ControllerBase
 
         return Ok(countries);
     }
+    [HttpGet("debug-count")]
+    public async Task<IActionResult> DebugCount(CancellationToken cancellationToken)
+    {
+        var count = await _dbContext.Countries.CountAsync(cancellationToken);
+
+        return Ok(new { count });
+    }
 }
