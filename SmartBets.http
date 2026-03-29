@@ -1,0 +1,6 @@
+@SmartBets_HostAddress = http://localhost:5160
+
+GET {{SmartBets_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
