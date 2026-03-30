@@ -52,7 +52,23 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// да се изтрие надолу
 
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "text/plain";
+
+        var exceptionHandlerPathFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>();
+        var ex = exceptionHandlerPathFeature?.Error;
+
+        await context.Response.WriteAsync(ex?.ToString() ?? "Unknown error");
+    });
+});
+
+// до тук
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
 app.Urls.Add($"http://*:{port}");
@@ -63,7 +79,7 @@ app.UseSwaggerUI();
 
 app.UseCors("FrontendPolicy");
 
-//app.UseHttpsRedirection();
+
 app.UseAuthorization();
 app.MapControllers();
 
