@@ -78,6 +78,7 @@ public class CountrySyncService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return result;
+        Console.WriteLine($"API countries count: {apiCountries?.Count ?? -1}");
     }
 
     private static string NormalizeName(string value)
@@ -92,4 +93,6 @@ public class CountrySyncService
 
         return value.Trim();
     }
+
+
 }
