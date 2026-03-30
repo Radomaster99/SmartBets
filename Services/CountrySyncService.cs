@@ -19,7 +19,16 @@ public class CountrySyncService
     {
         var apiCountries = await _footballApiService.GetCountriesAsync(cancellationToken);
 
+        Console.WriteLine($"[DEBUG] API countries count: {apiCountries?.Count ?? -1}");
+
+        if (apiCountries == null || apiCountries.Count == 0)
+        {
+            Console.WriteLine("[WARNING] API returned 0 countries!");
+        }
+
         var existingCountries = await _dbContext.Countries.ToListAsync(cancellationToken);
+
+        Console.WriteLine($"[DEBUG] Existing DB countries count: {existingCountries.Count}");
 
         var existingByName = existingCountries.ToDictionary(
             x => NormalizeName(x.Name),
@@ -75,10 +84,11 @@ public class CountrySyncService
             result.Processed++;
         }
 
+        Console.WriteLine($"[DEBUG] Processed: {result.Processed}, Inserted: {result.Inserted}, Updated: {result.Updated}");
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return result;
-        Console.WriteLine($"API countries count: {apiCountries?.Count ?? -1}");
     }
 
     private static string NormalizeName(string value)
@@ -93,6 +103,4 @@ public class CountrySyncService
 
         return value.Trim();
     }
-
-
 }
