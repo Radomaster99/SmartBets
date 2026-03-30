@@ -32,17 +32,22 @@ public class FootballApiService
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Console.WriteLine($"[API-FOOTBALL] Countries status: {(int)response.StatusCode} {response.StatusCode}");
+        Console.WriteLine($"[API-FOOTBALL] Countries raw response: {raw}");
+
         response.EnsureSuccessStatusCode();
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-        var result = await JsonSerializer.DeserializeAsync<ApiFootballCountriesResponse>(
-            stream,
+        var result = JsonSerializer.Deserialize<ApiFootballCountriesResponse>(
+            raw,
             new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
-            },
-            cancellationToken);
+            });
+
+        Console.WriteLine($"[API-FOOTBALL] Countries parsed count: {result?.Response?.Count ?? 0}");
 
         return result?.Response ?? new List<ApiFootballCountryItem>();
     }
