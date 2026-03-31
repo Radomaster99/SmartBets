@@ -97,13 +97,25 @@ app.UseExceptionHandler(errorApp =>
 {
     errorApp.Run(async context =>
     {
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "text/plain";
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
 
         var exceptionHandlerPathFeature = context.Features.Get<IExceptionHandlerPathFeature>();
         var ex = exceptionHandlerPathFeature?.Error;
 
-        await context.Response.WriteAsync(ex?.ToString() ?? "Unknown error");
+        logger.LogError(ex, "Unhandled exception occurred while processing request {Path}", context.Request.Path);
+
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/problem+json";
+
+        var problem = new
+        {
+            type = "https://example.com/probs/internal-server-error",
+            title = "An unexpected error occurred.",
+            status = 500,
+            detail = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development" ? ex?.Message : null
+        };
+
+        await context.Response.WriteAsJsonAsync(problem);
     });
 });
 

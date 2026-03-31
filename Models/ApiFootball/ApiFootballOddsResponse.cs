@@ -1,4 +1,6 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SmartBets.Models.ApiFootball;
 
@@ -49,9 +51,37 @@ public class ApiFootballOddsBet
 
 public class ApiFootballOddsValue
 {
+    // Use a flexible converter: API sometimes returns numbers instead of strings.
     [JsonPropertyName("value")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string Value { get; set; } = string.Empty;
 
     [JsonPropertyName("odd")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string Odd { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Converter that accepts JSON string, number, boolean or null and returns a string.
+/// Prevents System.Text.Json from throwing when API returns a number where we expect text.
+/// </summary>
+public class FlexibleStringConverter : JsonConverter<string>
+{
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.String => reader.GetString() ?? string.Empty,
+            JsonTokenType.Number => reader.GetDouble().ToString(CultureInfo.InvariantCulture),
+            JsonTokenType.True => "true",
+            JsonTokenType.False => "false",
+            JsonTokenType.Null => string.Empty,
+            _ => reader.GetRawText()
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value);
+    }
 }
