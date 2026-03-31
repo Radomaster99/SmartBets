@@ -8,6 +8,9 @@ public class ApiFootballOddsResponse
 {
     [JsonPropertyName("response")]
     public List<ApiFootballOddsFixtureItem> Response { get; set; } = new();
+
+    [JsonPropertyName("paging")]
+    public ApiFootballPaging? Paging { get; set; }
 }
 
 public class ApiFootballOddsFixtureItem
@@ -90,4 +93,13 @@ public class FlexibleStringConverter : JsonConverter<string>
     {
         writer.WriteStringValue(value);
     }
+}
+
+public class ApiFootballPaging
+{
+    [JsonPropertyName("current")]
+    public int Current { get; set; }
+
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
 }

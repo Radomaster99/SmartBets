@@ -62,7 +62,7 @@ public class FixtureSyncService
                 continue;
             }
 
-            var status = NormalizeStatus(item.Fixture.Status);
+            var status = FixtureStatusMapper.NormalizeShort(item.Fixture.Status?.Short);
             var kickoffAt = EnsureUtc(apiFixture.Date);
             var homeGoals = item.Goals.Home;
             var awayGoals = item.Goals.Away;
@@ -190,7 +190,7 @@ public class FixtureSyncService
                 continue;
             }
 
-            var status = NormalizeStatus(item.Fixture.Status);
+            var status = FixtureStatusMapper.NormalizeShort(item.Fixture.Status?.Short);
             var kickoffAt = EnsureUtc(apiFixture.Date);
             var homeGoals = item.Goals.Home;
             var awayGoals = item.Goals.Away;
@@ -279,17 +279,6 @@ public class FixtureSyncService
 
         return result;
     }
-
-    private static string? NormalizeStatus(ApiFootballFixtureStatus? status)
-    {
-        var value = status?.Short;
-
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        return value.Trim();
-    }
-
     private static DateTime EnsureUtc(DateTime value)
     {
         return value.Kind switch

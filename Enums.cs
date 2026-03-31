@@ -1,4 +1,4 @@
-﻿namespace SmartBets.Enums;
+namespace SmartBets.Enums;
 
 public enum FixtureStatus
 {
@@ -8,4 +8,14 @@ public enum FixtureStatus
     LIVE,   // Live
     PST,    // Postponed
     CANC    // Cancelled
+}
+
+public enum FixtureStateBucket
+{
+    Upcoming,
+    Live,
+    Finished,
+    Postponed,
+    Cancelled,
+    Other
 }

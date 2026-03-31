@@ -1,4 +1,6 @@
-﻿namespace SmartBets.Dtos;
+using SmartBets.Enums;
+
+namespace SmartBets.Dtos;
 
 public class FixtureDto
 {
@@ -7,15 +9,22 @@ public class FixtureDto
     public int Season { get; set; }
     public DateTime KickoffAt { get; set; }
     public string? Status { get; set; }
+    public FixtureStateBucket StateBucket { get; set; }
 
     public long LeagueId { get; set; }
+    public long LeagueApiId { get; set; }
     public string LeagueName { get; set; } = string.Empty;
+    public string CountryName { get; set; } = string.Empty;
 
     public long HomeTeamId { get; set; }
+    public long HomeTeamApiId { get; set; }
     public string HomeTeamName { get; set; } = string.Empty;
+    public string? HomeTeamLogoUrl { get; set; }
 
     public long AwayTeamId { get; set; }
+    public long AwayTeamApiId { get; set; }
     public string AwayTeamName { get; set; } = string.Empty;
+    public string? AwayTeamLogoUrl { get; set; }
 
     public int? HomeGoals { get; set; }
     public int? AwayGoals { get; set; }

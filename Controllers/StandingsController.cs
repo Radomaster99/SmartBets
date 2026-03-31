@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Dtos;
@@ -12,11 +12,16 @@ public class StandingsController : ControllerBase
 {
     private readonly StandingsSyncService _syncService;
     private readonly AppDbContext _dbContext;
+    private readonly SyncStateService _syncStateService;
 
-    public StandingsController(StandingsSyncService syncService, AppDbContext dbContext)
+    public StandingsController(
+        StandingsSyncService syncService,
+        AppDbContext dbContext,
+        SyncStateService syncStateService)
     {
         _syncService = syncService;
         _dbContext = dbContext;
+        _syncStateService = syncStateService;
     }
 
     [HttpPost("sync")]
@@ -26,12 +31,21 @@ public class StandingsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _syncService.SyncStandingsAsync(leagueId, season, cancellationToken);
+        var syncedAtUtc = DateTime.UtcNow;
+
+        await _syncStateService.SetLastSyncedAtAsync(
+            "standings",
+            leagueId,
+            season,
+            syncedAtUtc,
+            cancellationToken);
 
         return Ok(new
         {
             Message = "Standings synced successfully.",
             LeagueId = leagueId,
             Season = season,
+            LastSyncedAtUtc = syncedAtUtc,
             result.Processed,
             result.Inserted,
             result.Updated,

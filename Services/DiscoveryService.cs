@@ -42,12 +42,11 @@ public class DiscoveryService
 
                 var fixturesCount = apiFixtures.Count;
                 var upcomingCount = apiFixtures.Count(x =>
-                    string.Equals(x.Fixture.Status.Short, "NS", StringComparison.OrdinalIgnoreCase));
+                    FixtureStatusMapper.GetStateBucket(x.Fixture.Status.Short) == Enums.FixtureStateBucket.Upcoming);
                 var finishedCount = apiFixtures.Count(x =>
-                    string.Equals(x.Fixture.Status.Short, "FT", StringComparison.OrdinalIgnoreCase));
+                    FixtureStatusMapper.GetStateBucket(x.Fixture.Status.Short) == Enums.FixtureStateBucket.Finished);
                 var liveCount = apiFixtures.Count(x =>
-                    string.Equals(x.Fixture.Status.Short, "LIVE", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(x.Fixture.Status.Short, "HT", StringComparison.OrdinalIgnoreCase));
+                    FixtureStatusMapper.GetStateBucket(x.Fixture.Status.Short) == Enums.FixtureStateBucket.Live);
 
                 result.Add(new LeagueCoverageDto
                 {

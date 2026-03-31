@@ -1,6 +1,74 @@
 @SmartBets_HostAddress = http://localhost:5160
+@ApiKey = your-api-key-here
 
-GET {{SmartBets_HostAddress}}/weatherforecast/
+### Health
+GET {{SmartBets_HostAddress}}/ping
 Accept: application/json
 
-###
+### Countries sync
+POST {{SmartBets_HostAddress}}/api/countries/sync
+X-API-KEY: {{ApiKey}}
+
+### Leagues sync
+POST {{SmartBets_HostAddress}}/api/leagues/sync
+X-API-KEY: {{ApiKey}}
+
+### Teams sync for one league-season
+POST {{SmartBets_HostAddress}}/api/teams/sync?leagueId=39&season=2025
+X-API-KEY: {{ApiKey}}
+
+### Full fixtures sync for one league-season
+POST {{SmartBets_HostAddress}}/api/fixtures/sync?leagueId=39&season=2025
+X-API-KEY: {{ApiKey}}
+
+### Upcoming fixtures sync for one league-season
+POST {{SmartBets_HostAddress}}/api/fixtures/sync-upcoming?leagueId=39&season=2025
+X-API-KEY: {{ApiKey}}
+
+### Match winner odds sync for one league-season
+POST {{SmartBets_HostAddress}}/api/odds/sync?leagueId=39&season=2025&marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+
+### Standings sync for one league-season
+POST {{SmartBets_HostAddress}}/api/standings/sync?leagueId=39&season=2025
+X-API-KEY: {{ApiKey}}
+
+### Legacy fixtures list with filters
+GET {{SmartBets_HostAddress}}/api/fixtures?leagueId=39&season=2025&state=Upcoming&direction=asc
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Paged fixtures query for frontend
+GET {{SmartBets_HostAddress}}/api/fixtures/query?leagueId=39&season=2025&state=Finished&from=2025-08-01&to=2025-08-31&page=1&pageSize=20&direction=desc
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Team-centric fixtures query using API team id
+GET {{SmartBets_HostAddress}}/api/fixtures/query?teamId=33&state=Live&page=1&pageSize=10
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Fixture detail by API fixture id
+GET {{SmartBets_HostAddress}}/api/fixtures/123456?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Latest fixture odds by API fixture id
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/odds?marketName=Match%20Winner&latestOnly=true
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Best fixture odds by API fixture id
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/best-odds?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Odds endpoint by API fixture id
+GET {{SmartBets_HostAddress}}/api/odds?apiFixtureId=123456&marketName=Match%20Winner&latestOnly=true
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Sync freshness overview
+GET {{SmartBets_HostAddress}}/api/sync-status?activeOnly=true&season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json

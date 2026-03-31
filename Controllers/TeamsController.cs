@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Dtos;
@@ -12,11 +12,16 @@ public class TeamsController : ControllerBase
 {
     private readonly TeamSyncService _teamSyncService;
     private readonly AppDbContext _dbContext;
+    private readonly SyncStateService _syncStateService;
 
-    public TeamsController(TeamSyncService teamSyncService, AppDbContext dbContext)
+    public TeamsController(
+        TeamSyncService teamSyncService,
+        AppDbContext dbContext,
+        SyncStateService syncStateService)
     {
         _teamSyncService = teamSyncService;
         _dbContext = dbContext;
+        _syncStateService = syncStateService;
     }
 
     [HttpPost("sync")]
@@ -26,6 +31,11 @@ public class TeamsController : ControllerBase
         [FromQuery] int maxLeagues = 5,
         CancellationToken cancellationToken = default)
     {
+        if (maxLeagues <= 0)
+            return BadRequest("maxLeagues must be greater than 0.");
+
+        var syncedAtUtc = DateTime.UtcNow;
+
         if (leagueId.HasValue)
         {
             var result = await _teamSyncService.SyncTeamsAsync(
@@ -33,11 +43,19 @@ public class TeamsController : ControllerBase
                 season,
                 cancellationToken);
 
+            await _syncStateService.SetLastSyncedAtAsync(
+                "teams",
+                leagueId.Value,
+                season,
+                syncedAtUtc,
+                cancellationToken);
+
             return Ok(new
             {
                 Message = "Teams synced for specific league.",
                 LeagueId = leagueId,
                 Season = season,
+                LastSyncedAtUtc = syncedAtUtc,
                 result.Processed,
                 result.Inserted,
                 result.Updated
@@ -47,6 +65,7 @@ public class TeamsController : ControllerBase
         var leagues = await _dbContext.Leagues
             .AsNoTracking()
             .Where(x => x.Season == season)
+            .OrderBy(x => x.ApiLeagueId)
             .Take(maxLeagues)
             .ToListAsync(cancellationToken);
 
@@ -61,6 +80,13 @@ public class TeamsController : ControllerBase
                 season,
                 cancellationToken);
 
+            await _syncStateService.SetLastSyncedAtAsync(
+                "teams",
+                league.ApiLeagueId,
+                season,
+                syncedAtUtc,
+                cancellationToken);
+
             totalProcessed += result.Processed;
             totalInserted += result.Inserted;
             totalUpdated += result.Updated;
@@ -71,6 +97,7 @@ public class TeamsController : ControllerBase
             Message = "Teams synced for multiple leagues.",
             Season = season,
             LeaguesProcessed = leagues.Count,
+            LastSyncedAtUtc = syncedAtUtc,
             TotalProcessed = totalProcessed,
             TotalInserted = totalInserted,
             TotalUpdated = totalUpdated

@@ -1,7 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using SmartBets.Data;
-using SmartBets.Dtos;
+using Microsoft.AspNetCore.Mvc;
+using SmartBets.Services;
 
 namespace SmartBets.Controllers;
 
@@ -9,32 +7,84 @@ namespace SmartBets.Controllers;
 [Route("api/[controller]")]
 public class OddsController : ControllerBase
 {
-    private readonly AppDbContext _dbContext;
+    private readonly PreMatchOddsService _preMatchOddsService;
+    private readonly SyncStateService _syncStateService;
 
-    public OddsController(AppDbContext dbContext)
+    public OddsController(
+        PreMatchOddsService preMatchOddsService,
+        SyncStateService syncStateService)
     {
-        _dbContext = dbContext;
+        _preMatchOddsService = preMatchOddsService;
+        _syncStateService = syncStateService;
+    }
+
+    [HttpPost("sync")]
+    public async Task<IActionResult> Sync(
+        [FromQuery] long leagueId,
+        [FromQuery] int season,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken)
+    {
+        var result = await _preMatchOddsService.SyncOddsAsync(
+            leagueId,
+            season,
+            marketName,
+            cancellationToken);
+
+        var syncedAtUtc = DateTime.UtcNow;
+
+        await _syncStateService.SetLastSyncedAtAsync(
+            "odds",
+            leagueId,
+            season,
+            syncedAtUtc,
+            cancellationToken);
+
+        await _syncStateService.SetLastSyncedAtAsync(
+            "bookmakers",
+            leagueId,
+            season,
+            syncedAtUtc,
+            cancellationToken);
+
+        return Ok(new
+        {
+            Message = "Pre-match odds synced successfully.",
+            LeagueId = leagueId,
+            Season = season,
+            LastSyncedAtUtc = syncedAtUtc,
+            result.MarketName,
+            result.FixturesMatched,
+            result.FixturesMissingInDatabase,
+            result.BookmakersProcessed,
+            result.BookmakersInserted,
+            result.BookmakersUpdated,
+            result.SnapshotsProcessed,
+            result.SnapshotsInserted,
+            result.SnapshotsSkippedUnchanged,
+            result.SnapshotsSkippedUnsupportedMarket
+        });
     }
 
     [HttpGet]
     public async Task<IActionResult> GetOdds(
-        [FromQuery] long fixtureId,
-        CancellationToken cancellationToken)
+        [FromQuery] long? fixtureId,
+        [FromQuery] long? apiFixtureId,
+        [FromQuery] string? marketName,
+        [FromQuery] bool latestOnly = true,
+        CancellationToken cancellationToken = default)
     {
-        var odds = await _dbContext.PreMatchOdds
-            .AsNoTracking()
-            .Include(x => x.Bookmaker)
-            .Where(x => x.FixtureId == fixtureId)
-            .Select(x => new OddDto
-            {
-                Bookmaker = x.Bookmaker.Name,
-                HomeOdd = x.HomeOdd,
-                DrawOdd = x.DrawOdd,
-                AwayOdd = x.AwayOdd
-            })
-            .ToListAsync(cancellationToken);
+        if (!fixtureId.HasValue && !apiFixtureId.HasValue)
+            return BadRequest("Either fixtureId or apiFixtureId is required.");
 
-        if (!odds.Any())
+        var odds = await _preMatchOddsService.GetFixtureOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            marketName,
+            latestOnly,
+            cancellationToken);
+
+        if (odds.Count == 0)
         {
             return NotFound(new
             {
@@ -47,16 +97,21 @@ public class OddsController : ControllerBase
 
     [HttpGet("best")]
     public async Task<IActionResult> GetBestOdds(
-        [FromQuery] long fixtureId,
-        CancellationToken cancellationToken)
+        [FromQuery] long? fixtureId,
+        [FromQuery] long? apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
     {
-        var odds = await _dbContext.PreMatchOdds
-            .AsNoTracking()
-            .Include(x => x.Bookmaker)
-            .Where(x => x.FixtureId == fixtureId)
-            .ToListAsync(cancellationToken);
+        if (!fixtureId.HasValue && !apiFixtureId.HasValue)
+            return BadRequest("Either fixtureId or apiFixtureId is required.");
 
-        if (!odds.Any())
+        var bestOdds = await _preMatchOddsService.GetBestOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            marketName,
+            cancellationToken);
+
+        if (bestOdds is null)
         {
             return NotFound(new
             {
@@ -64,35 +119,6 @@ public class OddsController : ControllerBase
             });
         }
 
-        var bestHome = odds
-            .Where(x => x.HomeOdd.HasValue)
-            .OrderByDescending(x => x.HomeOdd)
-            .FirstOrDefault();
-
-        var bestDraw = odds
-            .Where(x => x.DrawOdd.HasValue)
-            .OrderByDescending(x => x.DrawOdd)
-            .FirstOrDefault();
-
-        var bestAway = odds
-            .Where(x => x.AwayOdd.HasValue)
-            .OrderByDescending(x => x.AwayOdd)
-            .FirstOrDefault();
-
-        var result = new BestOddsDto
-        {
-            FixtureId = fixtureId,
-
-            BestHomeOdd = bestHome?.HomeOdd,
-            BestHomeBookmaker = bestHome?.Bookmaker?.Name,
-
-            BestDrawOdd = bestDraw?.DrawOdd,
-            BestDrawBookmaker = bestDraw?.Bookmaker?.Name,
-
-            BestAwayOdd = bestAway?.AwayOdd,
-            BestAwayBookmaker = bestAway?.Bookmaker?.Name
-        };
-
-        return Ok(result);
+        return Ok(bestOdds);
     }
 }

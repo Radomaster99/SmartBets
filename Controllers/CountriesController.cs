@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Dtos;
@@ -12,21 +12,35 @@ public class CountriesController : ControllerBase
 {
     private readonly CountrySyncService _countrySyncService;
     private readonly AppDbContext _dbContext;
+    private readonly SyncStateService _syncStateService;
 
-    public CountriesController(CountrySyncService countrySyncService, AppDbContext dbContext)
+    public CountriesController(
+        CountrySyncService countrySyncService,
+        AppDbContext dbContext,
+        SyncStateService syncStateService)
     {
         _countrySyncService = countrySyncService;
         _dbContext = dbContext;
+        _syncStateService = syncStateService;
     }
 
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(CancellationToken cancellationToken)
     {
         var result = await _countrySyncService.SyncCountriesAsync(cancellationToken);
+        var syncedAtUtc = DateTime.UtcNow;
+
+        await _syncStateService.SetLastSyncedAtAsync(
+            "countries",
+            null,
+            null,
+            syncedAtUtc,
+            cancellationToken);
 
         return Ok(new
         {
             Message = "Countries synced successfully.",
+            LastSyncedAtUtc = syncedAtUtc,
             result.Processed,
             result.Inserted,
             result.Updated
@@ -49,6 +63,7 @@ public class CountriesController : ControllerBase
 
         return Ok(countries);
     }
+
     [HttpGet("debug-count")]
     public async Task<IActionResult> DebugCount(CancellationToken cancellationToken)
     {

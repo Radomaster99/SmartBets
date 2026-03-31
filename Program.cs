@@ -62,6 +62,7 @@ builder.Services.AddScoped<LeagueSyncService>();
 builder.Services.AddScoped<TeamSyncService>();
 builder.Services.AddScoped<FixtureSyncService>();
 builder.Services.AddScoped<BookmakerSyncService>();
+builder.Services.AddScoped<PreMatchOddsService>();
 builder.Services.AddScoped<DiscoveryService>();
 builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();

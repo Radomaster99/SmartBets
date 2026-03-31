@@ -206,32 +206,48 @@ public class FootballApiService
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("ApiFootball:ApiKey is missing.");
 
-        var url = $"{baseUrl.TrimEnd('/')}/odds?league={leagueId}&season={season}";
+        var allItems = new List<ApiFootballOddsFixtureItem>();
+        var currentPage = 1;
+        var totalPages = 1;
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("x-apisports-key", apiKey);
-        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        do
         {
-            throw new InvalidOperationException("API-Football rate limit reached. Try again later or use a smaller sync scope.");
-        }
+            var url = $"{baseUrl.TrimEnd('/')}/odds?league={leagueId}&season={season}&page={currentPage}";
 
-        response.EnsureSuccessStatusCode();
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("x-apisports-key", apiKey);
+            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
 
-        var result = await System.Text.Json.JsonSerializer.DeserializeAsync<ApiFootballOddsResponse>(
-            stream,
-            new System.Text.Json.JsonSerializerOptions
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
             {
-                PropertyNameCaseInsensitive = true
-            },
-            cancellationToken);
+                throw new InvalidOperationException("API-Football rate limit reached. Try again later or use a smaller sync scope.");
+            }
 
-        return result?.Response ?? new List<ApiFootballOddsFixtureItem>();
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+            var result = await System.Text.Json.JsonSerializer.DeserializeAsync<ApiFootballOddsResponse>(
+                stream,
+                new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                },
+                cancellationToken);
+
+            if (result?.Response is { Count: > 0 })
+            {
+                allItems.AddRange(result.Response);
+            }
+
+            totalPages = Math.Max(result?.Paging?.Total ?? 1, 1);
+            currentPage++;
+        }
+        while (currentPage <= totalPages);
+
+        return allItems;
     }
     public async Task<List<ApiFootballFixtureItem>> GetUpcomingFixturesAsync(
     long leagueId,

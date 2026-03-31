@@ -24,6 +24,7 @@ public class CountrySyncService
         if (apiCountries == null || apiCountries.Count == 0)
         {
             Console.WriteLine("[WARNING] API returned 0 countries!");
+            apiCountries = new List<Models.ApiFootball.ApiFootballCountryItem>();
         }
 
         var existingCountries = await _dbContext.Countries.ToListAsync(cancellationToken);
@@ -38,10 +39,12 @@ public class CountrySyncService
 
         foreach (var apiCountry in apiCountries)
         {
-            if (string.IsNullOrWhiteSpace(apiCountry.Name))
+            var countryName = apiCountry.Name?.Trim();
+
+            if (string.IsNullOrWhiteSpace(countryName))
                 continue;
 
-            var normalizedName = NormalizeName(apiCountry.Name);
+            var normalizedName = NormalizeName(countryName);
 
             if (existingByName.TryGetValue(normalizedName, out var existingCountry))
             {
@@ -71,7 +74,7 @@ public class CountrySyncService
             {
                 var newCountry = new Country
                 {
-                    Name = apiCountry.Name.Trim(),
+                    Name = countryName,
                     Code = NormalizeNullable(apiCountry.Code),
                     FlagUrl = NormalizeNullable(apiCountry.Flag)
                 };
