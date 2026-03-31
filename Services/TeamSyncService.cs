@@ -54,6 +54,11 @@ public class TeamSyncService
             var normalizedName = apiTeam.Name.Trim();
             var normalizedCode = NormalizeNullable(apiTeam.Code);
             var normalizedLogo = NormalizeNullable(apiTeam.Logo);
+            var normalizedVenueName = NormalizeNullable(item.Venue.Name);
+            var normalizedVenueAddress = NormalizeNullable(item.Venue.Address);
+            var normalizedVenueCity = NormalizeNullable(item.Venue.City);
+            var normalizedVenueSurface = NormalizeNullable(item.Venue.Surface);
+            var normalizedVenueImageUrl = NormalizeNullable(item.Venue.Image);
 
             long? countryId = null;
 
@@ -89,6 +94,54 @@ public class TeamSyncService
                     isChanged = true;
                 }
 
+                if (existing.Founded != apiTeam.Founded)
+                {
+                    existing.Founded = apiTeam.Founded;
+                    isChanged = true;
+                }
+
+                if (existing.IsNational != apiTeam.National)
+                {
+                    existing.IsNational = apiTeam.National;
+                    isChanged = true;
+                }
+
+                if (existing.VenueName != normalizedVenueName)
+                {
+                    existing.VenueName = normalizedVenueName;
+                    isChanged = true;
+                }
+
+                if (existing.VenueAddress != normalizedVenueAddress)
+                {
+                    existing.VenueAddress = normalizedVenueAddress;
+                    isChanged = true;
+                }
+
+                if (existing.VenueCity != normalizedVenueCity)
+                {
+                    existing.VenueCity = normalizedVenueCity;
+                    isChanged = true;
+                }
+
+                if (existing.VenueCapacity != item.Venue.Capacity)
+                {
+                    existing.VenueCapacity = item.Venue.Capacity;
+                    isChanged = true;
+                }
+
+                if (existing.VenueSurface != normalizedVenueSurface)
+                {
+                    existing.VenueSurface = normalizedVenueSurface;
+                    isChanged = true;
+                }
+
+                if (existing.VenueImageUrl != normalizedVenueImageUrl)
+                {
+                    existing.VenueImageUrl = normalizedVenueImageUrl;
+                    isChanged = true;
+                }
+
                 if (existing.CountryId != countryId)
                 {
                     existing.CountryId = countryId;
@@ -108,6 +161,14 @@ public class TeamSyncService
                     Name = normalizedName,
                     Code = normalizedCode,
                     LogoUrl = normalizedLogo,
+                    Founded = apiTeam.Founded,
+                    IsNational = apiTeam.National,
+                    VenueName = normalizedVenueName,
+                    VenueAddress = normalizedVenueAddress,
+                    VenueCity = normalizedVenueCity,
+                    VenueCapacity = item.Venue.Capacity,
+                    VenueSurface = normalizedVenueSurface,
+                    VenueImageUrl = normalizedVenueImageUrl,
                     CountryId = countryId
                 };
 

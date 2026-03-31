@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmartBets.Data;
@@ -11,9 +12,11 @@ using SmartBets.Data;
 namespace SmartBets.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260331185318_Stage6LiveStatusAndMetadata")]
+    partial class Stage6LiveStatusAndMetadata
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1356,112 +1359,6 @@ namespace SmartBets.Migrations
                     b.ToTable("league_top_scorers", (string)null);
                 });
 
-            modelBuilder.Entity("SmartBets.Entities.LiveBetType", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("ApiBetId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("api_bet_id");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<DateTime>("SyncedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("synced_at_utc");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApiBetId")
-                        .IsUnique();
-
-                    b.ToTable("live_bet_types", (string)null);
-                });
-
-            modelBuilder.Entity("SmartBets.Entities.LiveOdd", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("ApiBetId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("api_bet_id");
-
-                    b.Property<string>("BetName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("bet_name");
-
-                    b.Property<bool?>("Blocked")
-                        .HasColumnType("boolean")
-                        .HasColumnName("blocked");
-
-                    b.Property<long>("BookmakerId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("bookmaker_id");
-
-                    b.Property<DateTime>("CollectedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("collected_at_utc");
-
-                    b.Property<bool?>("Finished")
-                        .HasColumnType("boolean")
-                        .HasColumnName("finished");
-
-                    b.Property<long>("FixtureId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("fixture_id");
-
-                    b.Property<bool?>("IsMain")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_main");
-
-                    b.Property<string>("Line")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("line");
-
-                    b.Property<decimal?>("Odd")
-                        .HasColumnType("numeric")
-                        .HasColumnName("odd");
-
-                    b.Property<string>("OutcomeLabel")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("outcome_label");
-
-                    b.Property<bool?>("Stopped")
-                        .HasColumnType("boolean")
-                        .HasColumnName("stopped");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApiBetId");
-
-                    b.HasIndex("BookmakerId");
-
-                    b.HasIndex("FixtureId");
-
-                    b.HasIndex("FixtureId", "BookmakerId", "ApiBetId", "OutcomeLabel", "Line", "CollectedAtUtc");
-
-                    b.ToTable("live_odds", (string)null);
-                });
-
             modelBuilder.Entity("SmartBets.Entities.MarketConsensus", b =>
                 {
                     b.Property<long>("Id")
@@ -2473,34 +2370,6 @@ namespace SmartBets.Migrations
                     b.Navigation("League");
                 });
 
-            modelBuilder.Entity("SmartBets.Entities.LiveOdd", b =>
-                {
-                    b.HasOne("SmartBets.Entities.LiveBetType", "LiveBetType")
-                        .WithMany("LiveOdds")
-                        .HasForeignKey("ApiBetId")
-                        .HasPrincipalKey("ApiBetId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartBets.Entities.Bookmaker", "Bookmaker")
-                        .WithMany("LiveOdds")
-                        .HasForeignKey("BookmakerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
-                        .WithMany("LiveOdds")
-                        .HasForeignKey("FixtureId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Bookmaker");
-
-                    b.Navigation("Fixture");
-
-                    b.Navigation("LiveBetType");
-                });
-
             modelBuilder.Entity("SmartBets.Entities.MarketConsensus", b =>
                 {
                     b.HasOne("SmartBets.Entities.Fixture", "Fixture")
@@ -2619,8 +2488,6 @@ namespace SmartBets.Migrations
 
             modelBuilder.Entity("SmartBets.Entities.Bookmaker", b =>
                 {
-                    b.Navigation("LiveOdds");
-
                     b.Navigation("OddsMovements");
 
                     b.Navigation("OddsOpenCloses");
@@ -2642,8 +2509,6 @@ namespace SmartBets.Migrations
                     b.Navigation("Injuries");
 
                     b.Navigation("Lineups");
-
-                    b.Navigation("LiveOdds");
 
                     b.Navigation("MarketConsensuses");
 
@@ -2675,11 +2540,6 @@ namespace SmartBets.Migrations
                     b.Navigation("TopCards");
 
                     b.Navigation("TopScorers");
-                });
-
-            modelBuilder.Entity("SmartBets.Entities.LiveBetType", b =>
-                {
-                    b.Navigation("LiveOdds");
                 });
 
             modelBuilder.Entity("SmartBets.Entities.Team", b =>

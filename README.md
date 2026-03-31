@@ -73,3 +73,37 @@ Stage 5 odds analytics:
 - `GET /api/fixtures/{apiFixtureId}/odds/value-signals`
 - `POST /api/odds/analytics/rebuild`
 - automatic rebuild of derived odds analytics after `POST /api/odds/sync`
+
+Stage 6 live status + metadata enrichment:
+- lightweight live fixture status sync via `POST /api/fixtures/sync-live-status`
+- richer fixture metadata stored from `/fixtures`
+- richer team metadata stored from `/teams`
+- new fixture freshness field for live status checks
+- new sync-status field for `fixtures_live`
+- migration: `Migrations/20260331185318_Stage6LiveStatusAndMetadata.cs`
+- SQL fallback: `sql/stage6_live_status_and_metadata_manual.sql`
+
+Stage 7 live odds + fixture batch sync:
+- `sync-live-match-center` now batches fixture detail refreshes via API-Football `fixtures?ids=...`
+- new live odds reference cache: `live_bet_types`
+- new live odds snapshot table: `live_odds`
+- `POST /api/odds/live-bets/sync`
+- `GET /api/odds/live-bets`
+- `POST /api/odds/live/sync`
+- `GET /api/odds/live`
+- `GET /api/fixtures/{apiFixtureId}/odds/live`
+- migration: `Migrations/20260331190852_Stage7LiveOddsAndFixtureBatchSync.cs`
+- SQL fallback: `sql/stage7_live_odds_and_fixture_batch_sync_manual.sql`
+
+Stage 8 internal live automation:
+- built-in `BackgroundService` orchestrates live refreshes without external cron
+- configuration section: `LiveAutomation`
+- worker has two modes:
+  - active mode when there are live, just-started or post-finish fixtures in tracked leagues
+  - idle mode when there is nothing urgent to refresh
+- default pacing is quota-aware:
+  - live status heartbeat every 30s
+  - match-center refresh every 60s
+  - players only every 180s and only when live fixture count is small
+- live odds auto-sync is intentionally opt-in and disabled by default in config
+- no new database migration is required for Stage 8

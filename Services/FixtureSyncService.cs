@@ -69,61 +69,10 @@ public class FixtureSyncService
             }
 
             var status = FixtureStatusMapper.NormalizeShort(item.Fixture.Status?.Short);
-            var kickoffAt = EnsureUtc(apiFixture.Date);
-            var homeGoals = item.Goals.Home;
-            var awayGoals = item.Goals.Away;
 
             if (existingByApiId.TryGetValue(apiFixture.Id, out var existing))
             {
-                var isChanged = false;
-
-                if (existing.LeagueId != league.Id)
-                {
-                    existing.LeagueId = league.Id;
-                    isChanged = true;
-                }
-
-                if (existing.Season != season)
-                {
-                    existing.Season = season;
-                    isChanged = true;
-                }
-
-                if (existing.KickoffAt != kickoffAt)
-                {
-                    existing.KickoffAt = kickoffAt;
-                    isChanged = true;
-                }
-
-                if (existing.Status != status)
-                {
-                    existing.Status = status;
-                    isChanged = true;
-                }
-
-                if (existing.HomeTeamId != homeTeam.Id)
-                {
-                    existing.HomeTeamId = homeTeam.Id;
-                    isChanged = true;
-                }
-
-                if (existing.AwayTeamId != awayTeam.Id)
-                {
-                    existing.AwayTeamId = awayTeam.Id;
-                    isChanged = true;
-                }
-
-                if (existing.HomeGoals != homeGoals)
-                {
-                    existing.HomeGoals = homeGoals;
-                    isChanged = true;
-                }
-
-                if (existing.AwayGoals != awayGoals)
-                {
-                    existing.AwayGoals = awayGoals;
-                    isChanged = true;
-                }
+                var isChanged = ApplyFixtureData(existing, league.Id, season, homeTeam.Id, awayTeam.Id, item, status);
 
                 if (isChanged)
                 {
@@ -134,16 +83,10 @@ public class FixtureSyncService
             {
                 var newFixture = new Fixture
                 {
-                    ApiFixtureId = apiFixture.Id,
-                    LeagueId = league.Id,
-                    Season = season,
-                    KickoffAt = kickoffAt,
-                    Status = status,
-                    HomeTeamId = homeTeam.Id,
-                    AwayTeamId = awayTeam.Id,
-                    HomeGoals = homeGoals,
-                    AwayGoals = awayGoals
+                    ApiFixtureId = apiFixture.Id
                 };
+
+                ApplyFixtureData(newFixture, league.Id, season, homeTeam.Id, awayTeam.Id, item, status);
 
                 _dbContext.Fixtures.Add(newFixture);
                 existingByApiId[apiFixture.Id] = newFixture;
@@ -199,61 +142,10 @@ public class FixtureSyncService
             }
 
             var status = FixtureStatusMapper.NormalizeShort(item.Fixture.Status?.Short);
-            var kickoffAt = EnsureUtc(apiFixture.Date);
-            var homeGoals = item.Goals.Home;
-            var awayGoals = item.Goals.Away;
 
             if (existingByApiId.TryGetValue(apiFixture.Id, out var existing))
             {
-                var isChanged = false;
-
-                if (existing.LeagueId != league.Id)
-                {
-                    existing.LeagueId = league.Id;
-                    isChanged = true;
-                }
-
-                if (existing.Season != season)
-                {
-                    existing.Season = season;
-                    isChanged = true;
-                }
-
-                if (existing.KickoffAt != kickoffAt)
-                {
-                    existing.KickoffAt = kickoffAt;
-                    isChanged = true;
-                }
-
-                if (existing.Status != status)
-                {
-                    existing.Status = status;
-                    isChanged = true;
-                }
-
-                if (existing.HomeTeamId != homeTeam.Id)
-                {
-                    existing.HomeTeamId = homeTeam.Id;
-                    isChanged = true;
-                }
-
-                if (existing.AwayTeamId != awayTeam.Id)
-                {
-                    existing.AwayTeamId = awayTeam.Id;
-                    isChanged = true;
-                }
-
-                if (existing.HomeGoals != homeGoals)
-                {
-                    existing.HomeGoals = homeGoals;
-                    isChanged = true;
-                }
-
-                if (existing.AwayGoals != awayGoals)
-                {
-                    existing.AwayGoals = awayGoals;
-                    isChanged = true;
-                }
+                var isChanged = ApplyFixtureData(existing, league.Id, season, homeTeam.Id, awayTeam.Id, item, status);
 
                 if (isChanged)
                 {
@@ -264,16 +156,10 @@ public class FixtureSyncService
             {
                 var newFixture = new Fixture
                 {
-                    ApiFixtureId = apiFixture.Id,
-                    LeagueId = league.Id,
-                    Season = season,
-                    KickoffAt = kickoffAt,
-                    Status = status,
-                    HomeTeamId = homeTeam.Id,
-                    AwayTeamId = awayTeam.Id,
-                    HomeGoals = homeGoals,
-                    AwayGoals = awayGoals
+                    ApiFixtureId = apiFixture.Id
                 };
+
+                ApplyFixtureData(newFixture, league.Id, season, homeTeam.Id, awayTeam.Id, item, status);
 
                 _dbContext.Fixtures.Add(newFixture);
                 existingByApiId[apiFixture.Id] = newFixture;
@@ -297,5 +183,52 @@ public class FixtureSyncService
             DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
             _ => value
         };
+    }
+
+    internal static bool ApplyFixtureData(
+        Fixture target,
+        long leagueId,
+        int season,
+        long homeTeamId,
+        long awayTeamId,
+        Models.ApiFootball.ApiFootballFixtureItem source,
+        string? normalizedStatus)
+    {
+        var isChanged = false;
+
+        var kickoffAt = EnsureUtc(source.Fixture.Date);
+        var statusLong = NormalizeNullable(source.Fixture.Status?.Long);
+        var referee = NormalizeNullable(source.Fixture.Referee);
+        var timezone = NormalizeNullable(source.Fixture.Timezone);
+        var venueName = NormalizeNullable(source.Fixture.Venue?.Name);
+        var venueCity = NormalizeNullable(source.Fixture.Venue?.City);
+        var round = NormalizeNullable(source.League.Round);
+
+        if (target.LeagueId != leagueId) { target.LeagueId = leagueId; isChanged = true; }
+        if (target.Season != season) { target.Season = season; isChanged = true; }
+        if (target.KickoffAt != kickoffAt) { target.KickoffAt = kickoffAt; isChanged = true; }
+        if (target.Status != normalizedStatus) { target.Status = normalizedStatus; isChanged = true; }
+        if (target.StatusLong != statusLong) { target.StatusLong = statusLong; isChanged = true; }
+        if (target.Elapsed != source.Fixture.Status?.Elapsed) { target.Elapsed = source.Fixture.Status?.Elapsed; isChanged = true; }
+        if (target.StatusExtra != source.Fixture.Status?.Extra) { target.StatusExtra = source.Fixture.Status?.Extra; isChanged = true; }
+        if (target.Referee != referee) { target.Referee = referee; isChanged = true; }
+        if (target.Timezone != timezone) { target.Timezone = timezone; isChanged = true; }
+        if (target.VenueName != venueName) { target.VenueName = venueName; isChanged = true; }
+        if (target.VenueCity != venueCity) { target.VenueCity = venueCity; isChanged = true; }
+        if (target.Round != round) { target.Round = round; isChanged = true; }
+        if (target.HomeTeamId != homeTeamId) { target.HomeTeamId = homeTeamId; isChanged = true; }
+        if (target.AwayTeamId != awayTeamId) { target.AwayTeamId = awayTeamId; isChanged = true; }
+        if (target.HomeGoals != source.Goals.Home) { target.HomeGoals = source.Goals.Home; isChanged = true; }
+        if (target.AwayGoals != source.Goals.Away) { target.AwayGoals = source.Goals.Away; isChanged = true; }
+
+        return isChanged;
+    }
+
+    private static string? NormalizeNullable(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim();
     }
 }

@@ -13,32 +13,38 @@ namespace SmartBets.Controllers;
 public class FixturesController : ControllerBase
 {
     private readonly FixtureSyncService _fixtureSyncService;
+    private readonly FixtureLiveStatusSyncService _fixtureLiveStatusSyncService;
     private readonly FixtureMatchCenterReadService _fixtureMatchCenterReadService;
     private readonly FixtureMatchCenterSyncService _fixtureMatchCenterSyncService;
     private readonly FixturePreviewReadService _fixturePreviewReadService;
     private readonly FixturePreviewSyncService _fixturePreviewSyncService;
     private readonly PreMatchOddsService _preMatchOddsService;
+    private readonly LiveOddsService _liveOddsService;
     private readonly OddsAnalyticsService _oddsAnalyticsService;
     private readonly AppDbContext _dbContext;
     private readonly SyncStateService _syncStateService;
 
     public FixturesController(
         FixtureSyncService fixtureSyncService,
+        FixtureLiveStatusSyncService fixtureLiveStatusSyncService,
         FixtureMatchCenterReadService fixtureMatchCenterReadService,
         FixtureMatchCenterSyncService fixtureMatchCenterSyncService,
         FixturePreviewReadService fixturePreviewReadService,
         FixturePreviewSyncService fixturePreviewSyncService,
         PreMatchOddsService preMatchOddsService,
+        LiveOddsService liveOddsService,
         OddsAnalyticsService oddsAnalyticsService,
         AppDbContext dbContext,
         SyncStateService syncStateService)
     {
         _fixtureSyncService = fixtureSyncService ?? throw new ArgumentNullException(nameof(fixtureSyncService));
+        _fixtureLiveStatusSyncService = fixtureLiveStatusSyncService ?? throw new ArgumentNullException(nameof(fixtureLiveStatusSyncService));
         _fixtureMatchCenterReadService = fixtureMatchCenterReadService ?? throw new ArgumentNullException(nameof(fixtureMatchCenterReadService));
         _fixtureMatchCenterSyncService = fixtureMatchCenterSyncService ?? throw new ArgumentNullException(nameof(fixtureMatchCenterSyncService));
         _fixturePreviewReadService = fixturePreviewReadService ?? throw new ArgumentNullException(nameof(fixturePreviewReadService));
         _fixturePreviewSyncService = fixturePreviewSyncService ?? throw new ArgumentNullException(nameof(fixturePreviewSyncService));
         _preMatchOddsService = preMatchOddsService ?? throw new ArgumentNullException(nameof(preMatchOddsService));
+        _liveOddsService = liveOddsService ?? throw new ArgumentNullException(nameof(liveOddsService));
         _oddsAnalyticsService = oddsAnalyticsService ?? throw new ArgumentNullException(nameof(oddsAnalyticsService));
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _syncStateService = syncStateService ?? throw new ArgumentNullException(nameof(syncStateService));
@@ -159,6 +165,20 @@ public class FixturesController : ControllerBase
             result.Updated,
             result.SkippedMissingTeams
         });
+    }
+
+    [HttpPost("sync-live-status")]
+    public async Task<IActionResult> SyncLiveStatus(
+        [FromQuery] long? leagueId,
+        [FromQuery] bool activeOnly = true,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _fixtureLiveStatusSyncService.SyncLiveFixturesAsync(
+            leagueId,
+            activeOnly,
+            cancellationToken);
+
+        return Ok(result);
     }
 
     [HttpPost("{apiFixtureId:long}/sync-match-center")]
@@ -514,6 +534,32 @@ public class FixturesController : ControllerBase
         return Ok(bestOdds);
     }
 
+    [HttpGet("{apiFixtureId:long}/odds/live")]
+    public async Task<IActionResult> GetFixtureLiveOdds(
+        long apiFixtureId,
+        [FromQuery] long? betId,
+        [FromQuery] long? bookmakerId,
+        [FromQuery] bool latestOnly = true,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _liveOddsService.GetLiveOddsAsync(
+            apiFixtureId: apiFixtureId,
+            betId: betId,
+            bookmakerId: bookmakerId,
+            latestOnly: latestOnly,
+            cancellationToken: cancellationToken);
+
+        if (result.Count == 0)
+        {
+            return NotFound(new
+            {
+                Message = "No live odds found for this fixture."
+            });
+        }
+
+        return Ok(result);
+    }
+
     [HttpGet("{apiFixtureId:long}/odds/history")]
     public async Task<IActionResult> GetFixtureOddsHistory(
         long apiFixtureId,
@@ -721,7 +767,15 @@ public class FixturesController : ControllerBase
             Season = fixture.Season,
             KickoffAt = fixture.KickoffAt,
             Status = fixture.Status,
+            StatusLong = fixture.StatusLong,
+            Elapsed = fixture.Elapsed,
+            StatusExtra = fixture.StatusExtra,
             StateBucket = FixtureStatusMapper.GetStateBucket(fixture.Status),
+            Referee = fixture.Referee,
+            Timezone = fixture.Timezone,
+            VenueName = fixture.VenueName,
+            VenueCity = fixture.VenueCity,
+            Round = fixture.Round,
             LeagueId = fixture.League.ApiLeagueId,
             LeagueApiId = fixture.League.ApiLeagueId,
             LeagueName = fixture.League.Name,
@@ -761,6 +815,7 @@ public class FixturesController : ControllerBase
                 x.LeagueApiId == fixture.League.ApiLeagueId &&
                 x.Season == fixture.Season &&
                 (x.EntityType == "fixtures_upcoming" ||
+                 x.EntityType == "fixtures_live" ||
                  x.EntityType == "fixtures_full" ||
                  x.EntityType == "odds"))
             .ToListAsync(cancellationToken);
@@ -787,6 +842,7 @@ public class FixturesController : ControllerBase
                 cancellationToken: cancellationToken),
             Freshness = new FixtureFreshnessDto
             {
+                LastLiveStatusSyncedAtUtc = fixture.LastLiveStatusSyncedAtUtc,
                 LastEventSyncedAtUtc = fixture.LastEventSyncedAtUtc,
                 LastStatisticsSyncedAtUtc = fixture.LastStatisticsSyncedAtUtc,
                 LastLineupsSyncedAtUtc = fixture.LastLineupsSyncedAtUtc,
@@ -794,6 +850,7 @@ public class FixturesController : ControllerBase
                 LastPredictionSyncedAtUtc = fixture.LastPredictionSyncedAtUtc,
                 LastInjuriesSyncedAtUtc = fixture.LastInjuriesSyncedAtUtc
             },
+            FixturesLiveLastSyncedAtUtc = FindSyncValue("fixtures_live"),
             FixturesUpcomingLastSyncedAtUtc = FindSyncValue("fixtures_upcoming"),
             FixturesFullLastSyncedAtUtc = FindSyncValue("fixtures_full"),
             OddsLastSyncedAtUtc = FindSyncValue("odds")

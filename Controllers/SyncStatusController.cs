@@ -83,6 +83,11 @@ public class SyncStatusController : ControllerBase
             {
                 EntityType = "leagues",
                 LastSyncedAtUtc = GetLastSyncedAt("leagues", null, null)
+            },
+            new()
+            {
+                EntityType = "live_bet_types",
+                LastSyncedAtUtc = GetLastSyncedAt("live_bet_types", null, null)
             }
         };
 
@@ -100,6 +105,7 @@ public class SyncStatusController : ControllerBase
                     IsActive = x.IsActive,
                     Priority = x.Priority,
                     TeamsLastSyncedAtUtc = GetLastSyncedAt("teams", x.LeagueApiId, x.Season),
+                    FixturesLiveLastSyncedAtUtc = GetLastSyncedAt("fixtures_live", x.LeagueApiId, x.Season),
                     FixturesUpcomingLastSyncedAtUtc = GetLastSyncedAt("fixtures_upcoming", x.LeagueApiId, x.Season),
                     FixturesFullLastSyncedAtUtc = GetLastSyncedAt("fixtures_full", x.LeagueApiId, x.Season),
                     EventsLastSyncedAtUtc = GetLastSyncedAt("fixture_events", x.LeagueApiId, x.Season),
@@ -115,6 +121,7 @@ public class SyncStatusController : ControllerBase
                     TopCardsLastSyncedAtUtc = GetLastSyncedAt("league_top_cards", x.LeagueApiId, x.Season),
                     StandingsLastSyncedAtUtc = GetLastSyncedAt("standings", x.LeagueApiId, x.Season),
                     OddsLastSyncedAtUtc = GetLastSyncedAt("odds", x.LeagueApiId, x.Season),
+                    LiveOddsLastSyncedAtUtc = GetLastSyncedAt("live_odds", x.LeagueApiId, x.Season),
                     OddsAnalyticsLastSyncedAtUtc = GetLastSyncedAt("odds_analytics", x.LeagueApiId, x.Season),
                     BookmakersLastSyncedAtUtc = GetLastSyncedAt("bookmakers", x.LeagueApiId, x.Season)
                 };

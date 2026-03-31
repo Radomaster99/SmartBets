@@ -8,15 +8,18 @@ namespace SmartBets.Controllers;
 public class OddsController : ControllerBase
 {
     private readonly PreMatchOddsService _preMatchOddsService;
+    private readonly LiveOddsService _liveOddsService;
     private readonly OddsAnalyticsService _oddsAnalyticsService;
     private readonly SyncStateService _syncStateService;
 
     public OddsController(
         PreMatchOddsService preMatchOddsService,
+        LiveOddsService liveOddsService,
         OddsAnalyticsService oddsAnalyticsService,
         SyncStateService syncStateService)
     {
         _preMatchOddsService = preMatchOddsService;
+        _liveOddsService = liveOddsService;
         _oddsAnalyticsService = oddsAnalyticsService;
         _syncStateService = syncStateService;
     }
@@ -67,6 +70,72 @@ public class OddsController : ControllerBase
             result.SnapshotsSkippedUnchanged,
             result.SnapshotsSkippedUnsupportedMarket
         });
+    }
+
+    [HttpPost("live-bets/sync")]
+    public async Task<IActionResult> SyncLiveBetTypes(CancellationToken cancellationToken = default)
+    {
+        var result = await _liveOddsService.SyncLiveBetTypesAsync(cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("live-bets")]
+    public async Task<IActionResult> GetLiveBetTypes(CancellationToken cancellationToken = default)
+    {
+        var result = await _liveOddsService.GetLiveBetTypesAsync(cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("live/sync")]
+    public async Task<IActionResult> SyncLiveOdds(
+        [FromQuery] long? fixtureId,
+        [FromQuery] long? leagueId,
+        [FromQuery] long? betId,
+        [FromQuery] long? bookmakerId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!fixtureId.HasValue && !leagueId.HasValue)
+            return BadRequest("Provide fixtureId or leagueId.");
+
+        var result = await _liveOddsService.SyncLiveOddsAsync(
+            fixtureId,
+            leagueId,
+            betId,
+            bookmakerId,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpGet("live")]
+    public async Task<IActionResult> GetLiveOdds(
+        [FromQuery] long? fixtureId,
+        [FromQuery] long? apiFixtureId,
+        [FromQuery] long? betId,
+        [FromQuery] long? bookmakerId,
+        [FromQuery] bool latestOnly = true,
+        CancellationToken cancellationToken = default)
+    {
+        if (!fixtureId.HasValue && !apiFixtureId.HasValue)
+            return BadRequest("Either fixtureId or apiFixtureId is required.");
+
+        var result = await _liveOddsService.GetLiveOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            betId,
+            bookmakerId,
+            latestOnly,
+            cancellationToken);
+
+        if (result.Count == 0)
+        {
+            return NotFound(new
+            {
+                Message = "No live odds found for this fixture."
+            });
+        }
+
+        return Ok(result);
     }
 
     [HttpPost("analytics/rebuild")]

@@ -1672,3 +1672,400 @@ SQL fallback:
 
 If your database is still only on Stage 1 and you have not applied Stage 2, Stage 3 and Stage 4 changes yet, use:
 - `sql/pending_stage2_to_stage5.sql`
+
+## 25. Stage 6: Live Status And Metadata Enrichment
+
+Stage 6 adds two practical improvements:
+- richer metadata from existing `/teams` and `/fixtures` sync responses, without increasing request count for those sync jobs
+- a lightweight live-status sync endpoint that updates live scores and statuses with a single API-Football call for the targeted leagues
+
+### 25.1 `POST /api/fixtures/sync-live-status`
+
+Purpose:
+- updates live fixture state from API-Football using `/fixtures?live=...`
+- refreshes local score, status, elapsed, referee, venue and round data
+- can scope itself only to active `supported_leagues`, which is the safer default for your 5000 requests/day limit
+
+Query parameters:
+- `leagueId` - optional
+- `activeOnly` - optional, default `true`
+
+Behavior:
+- if `leagueId` is provided: sync runs only for this league id
+- if `leagueId` is missing and `activeOnly=true`: sync uses distinct active league ids from `supported_leagues`
+- if there are no active supported leagues and no `leagueId`, the endpoint returns without making a remote call
+- sync state `fixtures_live` is updated for every touched league/season
+
+Response:
+- `LiveFixtureStatusSyncResultDto`
+
+`LiveFixtureStatusSyncResultDto`:
+- `ScopedToActiveSupportedLeagues`
+- `TargetLeagueCount`
+- `LiveFixturesReceived`
+- `FixturesProcessed`
+- `FixturesInserted`
+- `FixturesUpdated`
+- `FixturesUnchanged`
+- `FixturesSkippedMissingLeague`
+- `FixturesSkippedMissingTeams`
+- `ExecutedAtUtc`
+
+Quota note:
+- this endpoint uses one remote API call per execution, not one call per live fixture
+- it is intended to be the cheap live heartbeat before heavier match-center refreshes
+
+### 25.2 Team Metadata Enrichment
+
+`GET /api/teams` now returns additional `TeamDto` fields:
+- `Founded`
+- `IsNational`
+- `VenueName`
+- `VenueAddress`
+- `VenueCity`
+- `VenueCapacity`
+- `VenueSurface`
+- `VenueImageUrl`
+
+These fields are synced from the existing `/teams?league=&season=` response, so team sync request cost stays the same.
+
+### 25.3 Fixture Metadata Enrichment
+
+`FixtureDto` now also exposes:
+- `StatusLong`
+- `Elapsed`
+- `StatusExtra`
+- `Referee`
+- `Timezone`
+- `VenueName`
+- `VenueCity`
+- `Round`
+
+These fields are stored during:
+- `POST /api/fixtures/sync`
+- `POST /api/fixtures/sync-upcoming`
+- `POST /api/fixtures/sync-live-status`
+
+This means fixture detail and fixture list endpoints become more frontend-friendly without extra read-time calls.
+
+### 25.4 Fixture Detail Freshness
+
+`FixtureFreshnessDto` now also contains:
+- `LastLiveStatusSyncedAtUtc`
+
+`FixtureDetailDto` now also contains:
+- `FixturesLiveLastSyncedAtUtc`
+
+This makes it easier to distinguish:
+- when the live score/status was last checked
+- when deeper match-center components were last refreshed
+
+### 25.5 Sync Status Additions
+
+`GET /api/sync-status` now also exposes:
+- `FixturesLiveLastSyncedAtUtc`
+
+This is the league-level freshness marker for the new lightweight live sync flow.
+
+### 25.6 Database Apply
+
+EF migration:
+- `Migrations/20260331185318_Stage6LiveStatusAndMetadata.cs`
+
+Generated EF script:
+- `sql/stage6_live_status_and_metadata.sql`
+
+Safe manual SQL fallback:
+- `sql/stage6_live_status_and_metadata_manual.sql`
+
+## 26. Stage 7: Fixture Batch Sync And Live Odds
+
+Stage 7 adds:
+- batched live match-center refreshes through API-Football `fixtures?ids=...`
+- live odds snapshot storage through `/odds/live`
+- local cache for live bet type IDs through `/odds/live/bets`
+
+### 26.1 Batched `sync-live-match-center`
+
+The public endpoint is unchanged:
+- `POST /api/fixtures/sync-live-match-center`
+
+But the implementation is now more quota-efficient:
+- the service first decides which live fixtures actually need events/statistics/lineups/players refresh
+- then it fetches them in chunks through `GET /fixtures?ids=...`
+- this reduces the number of remote calls compared to one call per fixture component
+
+Practical effect:
+- one batch call can return events, lineups, statistics and players for several fixtures together
+- this is the main quota-saving change for heavy live match-center usage
+
+### 26.2 `POST /api/odds/live-bets/sync`
+
+Purpose:
+- syncs the live bet type reference list from API-Football `/odds/live/bets`
+- stores the reference locally in `live_bet_types`
+
+Response:
+- `LiveBetTypesSyncResultDto`
+
+### 26.3 `GET /api/odds/live-bets`
+
+Purpose:
+- returns locally stored live bet type IDs
+- these IDs are the ones you must use with live odds
+
+Important:
+- live bet IDs are separate from pre-match bet IDs
+- do not reuse `/odds/bets` ids for `/odds/live`
+
+Response:
+- array of `LiveBetTypeDto`
+
+### 26.4 `POST /api/odds/live/sync`
+
+Purpose:
+- imports current live odds snapshots from API-Football `/odds/live`
+- stores snapshots in `live_odds`
+- updates existing bookmakers if their names changed
+
+Query parameters:
+- `fixtureId` - optional
+- `leagueId` - optional
+- `betId` - optional
+- `bookmakerId` - optional
+
+Validation:
+- requires either `fixtureId` or `leagueId`
+
+Behavior:
+- `fixtureId` and `leagueId` use API ids
+- `betId` must come from `GET /api/odds/live-bets`
+- snapshots are stored only when the latest local value has changed
+- sync state `live_odds` is updated per touched league/season
+
+Response:
+- `LiveOddsSyncResultDto`
+
+### 26.5 `GET /api/odds/live`
+
+Purpose:
+- reads stored live odds from the local database
+
+Query parameters:
+- `fixtureId` - optional local fixture id
+- `apiFixtureId` - optional API fixture id
+- `betId` - optional live bet id
+- `bookmakerId` - optional API bookmaker id
+- `latestOnly` - optional, default `true`
+
+Validation:
+- requires either `fixtureId` or `apiFixtureId`
+
+Response:
+- array of `LiveOddsMarketDto`
+
+`LiveOddsMarketDto`:
+- `FixtureId`
+- `ApiFixtureId`
+- `BookmakerId`
+- `ApiBookmakerId`
+- `Bookmaker`
+- `ApiBetId`
+- `BetName`
+- `CollectedAtUtc`
+- `Values`
+
+`LiveOddsValueDto`:
+- `OutcomeLabel`
+- `Line`
+- `Odd`
+- `IsMain`
+- `Stopped`
+- `Blocked`
+- `Finished`
+
+### 26.6 `GET /api/fixtures/{apiFixtureId}/odds/live`
+
+Purpose:
+- convenience read endpoint for live odds scoped by fixture
+
+Query parameters:
+- `betId` - optional
+- `bookmakerId` - optional API bookmaker id
+- `latestOnly` - optional, default `true`
+
+Response:
+- same payload as `GET /api/odds/live`
+
+### 26.7 Sync Status Additions
+
+`GET /api/sync-status` now also exposes:
+- global `live_bet_types`
+- league-level `LiveOddsLastSyncedAtUtc`
+
+### 26.8 Database Apply
+
+EF migration:
+- `Migrations/20260331190852_Stage7LiveOddsAndFixtureBatchSync.cs`
+
+Generated EF script:
+- `sql/stage7_live_odds_and_fixture_batch_sync.sql`
+
+Safe manual SQL fallback:
+- `sql/stage7_live_odds_and_fixture_batch_sync_manual.sql`
+
+## 27. Stage 8: Internal Live Automation Worker
+
+Stage 8 adds an internal `BackgroundService` so the application can keep live data fresh without an external cron job.
+
+Important:
+- this worker uses the existing sync services directly
+- read endpoints still stay database-only
+- there is no new database migration for Stage 8
+
+### 27.1 Goal
+
+The goal is to automate live refreshes in a quota-aware way:
+- cheap live status heartbeat first
+- heavier match-center refresh second
+- player stats less often
+- live odds only when explicitly enabled
+
+This keeps the app usable for live pages while respecting the 5000 requests/day limit much better than naive polling.
+
+### 27.2 Configuration
+
+Configuration section:
+
+`LiveAutomation`
+
+Current sample config in `appsettings.json`:
+
+```json
+"LiveAutomation": {
+  "Enabled": true,
+  "ActiveSupportedLeaguesOnly": true,
+  "ActiveIntervalSeconds": 30,
+  "IdleIntervalSeconds": 300,
+  "ErrorRetrySeconds": 120,
+  "LiveStatusIntervalSeconds": 30,
+  "MatchCenterIntervalSeconds": 60,
+  "IncludePlayersAutomation": true,
+  "PlayersIntervalSeconds": 180,
+  "MaxFixturesForPlayers": 2,
+  "UpcomingLookaheadMinutes": 75,
+  "KickoffGraceMinutes": 20,
+  "PostFinishLookbackHours": 3,
+  "MaxPostFinishRefreshes": 2,
+  "MaxMatchCenterFixtures": 6,
+  "EnableLiveOddsAutoSync": false,
+  "AllowAllLiveOddsMarkets": false,
+  "LiveOddsIntervalSeconds": 120,
+  "MaxLiveOddsLeaguesPerCycle": 2,
+  "LiveBetTypesRefreshHours": 24,
+  "LiveOddsBetIds": []
+}
+```
+
+Meaning of the important keys:
+- `Enabled` toggles the worker on/off
+- `ActiveSupportedLeaguesOnly` limits automation to active rows from `supported_leagues`
+- `ActiveIntervalSeconds` is the loop delay while there are live or near-kickoff fixtures
+- `IdleIntervalSeconds` is the loop delay when nothing urgent is happening
+- `LiveStatusIntervalSeconds` controls the cheap live heartbeat
+- `MatchCenterIntervalSeconds` controls the heavier batch `fixtures?ids=...` refresh
+- `PlayersIntervalSeconds` slows down player stats refreshes
+- `EnableLiveOddsAutoSync` enables automatic `/odds/live` imports
+- `LiveOddsBetIds` should contain only the live bet ids you actually need
+
+### 27.3 Worker Behavior
+
+The worker is registered through:
+- `LiveAutomationBackgroundService`
+- `LiveAutomationOrchestrator`
+
+It runs in two modes:
+
+1. Active mode
+- triggered when the database contains:
+  - live fixtures
+  - upcoming fixtures close to kickoff
+  - recently finished fixtures still eligible for the final post-finish refreshes
+- loop delay uses `ActiveIntervalSeconds`
+
+2. Idle mode
+- used when there is nothing urgent to refresh
+- loop delay uses `IdleIntervalSeconds`
+
+There is also a short grace window after kickoff:
+- a fixture that still looks `NS` locally but kicked off recently is still considered worth checking
+- this helps the worker catch the transition into live mode even if the local status is stale
+
+### 27.4 What The Worker Calls
+
+When active, the worker can call these sync services:
+
+1. Lightweight live heartbeat
+- `FixtureLiveStatusSyncService.SyncLiveFixturesAsync(...)`
+- updates score, short/long status, elapsed, venue, referee and round
+- this is the cheapest live call and runs first
+
+2. Match-center refresh
+- `FixtureMatchCenterSyncService.SyncLiveFixturesAsync(...)`
+- uses batched `fixtures?ids=...`
+- refreshes events, statistics, lineups and optionally players
+
+3. Live bet types
+- `LiveOddsService.SyncLiveBetTypesAsync(...)`
+- runs on a long interval, mainly to keep live bet ids current
+
+4. Live odds
+- `LiveOddsService.SyncLiveOddsAsync(...)`
+- only runs when `EnableLiveOddsAutoSync=true`
+- only runs for live leagues
+- by default does not run automatically until you explicitly configure desired live bet ids
+
+### 27.5 Quota Strategy
+
+The default behavior is intentionally conservative:
+- live status every 30 seconds
+- match-center every 60 seconds
+- player statistics every 180 seconds
+- players only when live fixture count is small
+- live odds auto-sync off by default
+
+This means:
+- the worker keeps the essential live scoreboard fresh
+- the expensive parts do not fire every loop
+- live odds are protected behind explicit config because they can become very expensive fast
+
+Recommended approach:
+- keep `EnableLiveOddsAutoSync=false` until you know which live markets the frontend really needs
+- then set only a small `LiveOddsBetIds` list
+- keep `MaxLiveOddsLeaguesPerCycle` low
+
+### 27.6 Error Handling
+
+If a background cycle fails:
+- the app logs the exception
+- the worker stores an entry in `sync_errors` with:
+  - `entity_type = live_automation`
+  - `operation = cycle`
+  - `source = background`
+- then it waits `ErrorRetrySeconds` before trying again
+
+### 27.7 Operational Notes
+
+Stage 8 removes the need for an external cron only for live orchestration.
+
+It does not replace your broader manual/admin sync flows such as:
+- countries
+- leagues
+- teams
+- season fixtures
+- standings
+- pre-match odds
+- previews
+- league analytics
+
+Those remain separate by design.

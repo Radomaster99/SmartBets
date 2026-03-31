@@ -121,6 +121,14 @@ public class TeamsController : ControllerBase
                 Name = x.Name,
                 Code = x.Code,
                 LogoUrl = x.LogoUrl,
+                Founded = x.Founded,
+                IsNational = x.IsNational,
+                VenueName = x.VenueName,
+                VenueAddress = x.VenueAddress,
+                VenueCity = x.VenueCity,
+                VenueCapacity = x.VenueCapacity,
+                VenueSurface = x.VenueSurface,
+                VenueImageUrl = x.VenueImageUrl,
                 CountryId = x.CountryId,
                 CountryName = x.Country != null ? x.Country.Name : null
             })

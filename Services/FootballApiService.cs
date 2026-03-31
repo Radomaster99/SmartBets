@@ -291,6 +291,36 @@ public class FootballApiService
         return result?.Response ?? new List<ApiFootballFixtureItem>();
     }
 
+    public async Task<List<ApiFootballFixtureItem>> GetLiveFixturesAsync(
+        IReadOnlyCollection<long>? leagueIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var liveScope = leagueIds is { Count: > 0 }
+            ? string.Join('-', leagueIds.Distinct().OrderBy(x => x))
+            : "all";
+
+        var result = await SendGetAsync<ApiFootballFixturesResponse>(
+            $"/fixtures?live={liveScope}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballFixtureItem>();
+    }
+
+    public async Task<List<ApiFootballFixtureItem>> GetFixturesByIdsAsync(
+        IReadOnlyCollection<long> fixtureIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (fixtureIds.Count == 0)
+            return new List<ApiFootballFixtureItem>();
+
+        var ids = string.Join('-', fixtureIds.Distinct().OrderBy(x => x));
+        var result = await SendGetAsync<ApiFootballFixturesResponse>(
+            $"/fixtures?ids={ids}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballFixtureItem>();
+    }
+
     public async Task<List<ApiFootballFixtureEventItem>> GetFixtureEventsAsync(
         long fixtureId,
         CancellationToken cancellationToken = default)
@@ -431,6 +461,48 @@ public class FootballApiService
             cancellationToken);
 
         return result?.Response ?? new List<ApiFootballTopPlayerItem>();
+    }
+
+    public async Task<List<ApiFootballLiveOddsFixtureItem>> GetLiveOddsAsync(
+        long? fixtureId = null,
+        long? leagueId = null,
+        long? betId = null,
+        long? bookmakerId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new List<string>();
+
+        if (fixtureId.HasValue)
+            query.Add($"fixture={fixtureId.Value}");
+
+        if (leagueId.HasValue)
+            query.Add($"league={leagueId.Value}");
+
+        if (betId.HasValue)
+            query.Add($"bet={betId.Value}");
+
+        if (bookmakerId.HasValue)
+            query.Add($"bookmaker={bookmakerId.Value}");
+
+        var suffix = query.Count == 0
+            ? string.Empty
+            : $"?{string.Join('&', query)}";
+
+        var result = await SendGetAsync<ApiFootballLiveOddsResponse>(
+            $"/odds/live{suffix}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballLiveOddsFixtureItem>();
+    }
+
+    public async Task<List<ApiFootballLiveBetTypeItem>> GetLiveOddsBetTypesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballLiveBetTypesResponse>(
+            "/odds/live/bets",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballLiveBetTypeItem>();
     }
 
     private async Task<T?> SendGetAsync<T>(string relativeUrl, CancellationToken cancellationToken)

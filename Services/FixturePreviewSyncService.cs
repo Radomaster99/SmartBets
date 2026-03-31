@@ -308,6 +308,7 @@ public class FixturePreviewSyncService
     {
         return new FixtureFreshnessDto
         {
+            LastLiveStatusSyncedAtUtc = fixture.LastLiveStatusSyncedAtUtc,
             LastEventSyncedAtUtc = fixture.LastEventSyncedAtUtc,
             LastStatisticsSyncedAtUtc = fixture.LastStatisticsSyncedAtUtc,
             LastLineupsSyncedAtUtc = fixture.LastLineupsSyncedAtUtc,

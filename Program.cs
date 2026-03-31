@@ -55,6 +55,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // HTTP client
 builder.Services.AddHttpClient<FootballApiService>();
+builder.Services.Configure<LiveAutomationOptions>(builder.Configuration.GetSection("LiveAutomation"));
 
 // Services
 builder.Services.AddScoped<CountrySyncService>();
@@ -62,6 +63,7 @@ builder.Services.AddScoped<LeagueSyncService>();
 builder.Services.AddScoped<LeagueCoverageService>();
 builder.Services.AddScoped<TeamSyncService>();
 builder.Services.AddScoped<FixtureSyncService>();
+builder.Services.AddScoped<FixtureLiveStatusSyncService>();
 builder.Services.AddScoped<FixtureMatchCenterReadService>();
 builder.Services.AddScoped<FixtureMatchCenterSyncService>();
 builder.Services.AddScoped<FixturePreviewReadService>();
@@ -70,12 +72,15 @@ builder.Services.AddScoped<TeamAnalyticsService>();
 builder.Services.AddScoped<LeagueAnalyticsService>();
 builder.Services.AddScoped<BookmakerSyncService>();
 builder.Services.AddScoped<PreMatchOddsService>();
+builder.Services.AddScoped<LiveOddsService>();
 builder.Services.AddScoped<OddsAnalyticsService>();
 builder.Services.AddScoped<DiscoveryService>();
 builder.Services.AddScoped<SyncErrorService>();
 builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
 builder.Services.AddScoped<StandingsSyncService>();
+builder.Services.AddScoped<LiveAutomationOrchestrator>();
+builder.Services.AddHostedService<LiveAutomationBackgroundService>();
 
 // CORS
 var allowedOrigins = builder.Configuration["CORS:AllowedOrigins"]?

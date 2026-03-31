@@ -22,6 +22,7 @@ public class LeagueSyncStatusItemDto
     public bool IsActive { get; set; }
     public int Priority { get; set; }
     public DateTime? TeamsLastSyncedAtUtc { get; set; }
+    public DateTime? FixturesLiveLastSyncedAtUtc { get; set; }
     public DateTime? FixturesUpcomingLastSyncedAtUtc { get; set; }
     public DateTime? FixturesFullLastSyncedAtUtc { get; set; }
     public DateTime? EventsLastSyncedAtUtc { get; set; }
@@ -37,6 +38,7 @@ public class LeagueSyncStatusItemDto
     public DateTime? TopCardsLastSyncedAtUtc { get; set; }
     public DateTime? StandingsLastSyncedAtUtc { get; set; }
     public DateTime? OddsLastSyncedAtUtc { get; set; }
+    public DateTime? LiveOddsLastSyncedAtUtc { get; set; }
     public DateTime? OddsAnalyticsLastSyncedAtUtc { get; set; }
     public DateTime? BookmakersLastSyncedAtUtc { get; set; }
 }

@@ -25,6 +25,14 @@ X-API-KEY: {{ApiKey}}
 POST {{SmartBets_HostAddress}}/api/fixtures/sync-upcoming?leagueId=39&season=2025
 X-API-KEY: {{ApiKey}}
 
+### Lightweight live-status sync for active supported leagues
+POST {{SmartBets_HostAddress}}/api/fixtures/sync-live-status?activeOnly=true
+X-API-KEY: {{ApiKey}}
+
+### Lightweight live-status sync for one league
+POST {{SmartBets_HostAddress}}/api/fixtures/sync-live-status?leagueId=39
+X-API-KEY: {{ApiKey}}
+
 ### Match winner odds sync for one league-season
 POST {{SmartBets_HostAddress}}/api/odds/sync?leagueId=39&season=2025&marketName=Match%20Winner
 X-API-KEY: {{ApiKey}}
@@ -64,6 +72,33 @@ X-API-KEY: {{ApiKey}}
 ### Live match-center sync batch
 POST {{SmartBets_HostAddress}}/api/fixtures/sync-live-match-center?leagueId=39&season=2025&maxFixtures=10&includePlayers=false&force=false
 X-API-KEY: {{ApiKey}}
+
+### Sync live bet types
+POST {{SmartBets_HostAddress}}/api/odds/live-bets/sync
+X-API-KEY: {{ApiKey}}
+
+### Get live bet types
+GET {{SmartBets_HostAddress}}/api/odds/live-bets
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Sync live odds for one live fixture
+POST {{SmartBets_HostAddress}}/api/odds/live/sync?fixtureId=123456
+X-API-KEY: {{ApiKey}}
+
+### Sync live odds for one league and live bet type
+POST {{SmartBets_HostAddress}}/api/odds/live/sync?leagueId=39&betId=1
+X-API-KEY: {{ApiKey}}
+
+### Read stored live odds by API fixture id
+GET {{SmartBets_HostAddress}}/api/odds/live?apiFixtureId=123456&betId=1&latestOnly=true
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Read stored live odds through fixture route
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/odds/live?betId=1&latestOnly=true
+X-API-KEY: {{ApiKey}}
+Accept: application/json
 
 ### Preview sync for one fixture
 POST {{SmartBets_HostAddress}}/api/fixtures/123456/sync-preview?force=false

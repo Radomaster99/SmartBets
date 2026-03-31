@@ -17,6 +17,7 @@ public class FixtureMatchCenterSyncService
     private static readonly TimeSpan PostFinishInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RecentFinishedWindow = TimeSpan.FromHours(3);
     private static readonly TimeSpan UpcomingLineupsWindow = TimeSpan.FromMinutes(45);
+    private const int BatchFixtureIdsSize = 10;
     private const int MaxPostFinishRefreshes = 2;
 
     private readonly AppDbContext _dbContext;
@@ -166,13 +167,15 @@ public class FixtureMatchCenterSyncService
         var finishedStatuses = FixtureStatusMapper.GetStatusesForBucket(FixtureStateBucket.Finished).ToArray();
 
         var query = _dbContext.Fixtures
-            .AsNoTracking()
             .Where(x =>
                 (x.Status != null && liveStatuses.Contains(x.Status)) ||
                 (x.Status != null &&
                  finishedStatuses.Contains(x.Status) &&
                  x.PostFinishMatchCenterSyncCount < MaxPostFinishRefreshes &&
                  x.KickoffAt >= nowUtc - RecentFinishedWindow))
+            .Include(x => x.League)
+            .Include(x => x.HomeTeam)
+            .Include(x => x.AwayTeam)
             .AsQueryable();
 
         if (leagueId.HasValue)
@@ -185,28 +188,185 @@ public class FixtureMatchCenterSyncService
             query = query.Where(x => x.Season == season.Value);
         }
 
-        var fixtureIds = await query
-            .Include(x => x.League)
+        var fixtures = await query
             .OrderBy(x => liveStatuses.Contains(x.Status! ) ? 0 : 1)
             .ThenBy(x => x.KickoffAt)
             .Take(maxFixtures)
-            .Select(x => x.ApiFixtureId)
             .ToListAsync(cancellationToken);
+
+        var coverageCache = new Dictionary<string, LeagueSeasonCoverage?>(StringComparer.Ordinal);
+        var plans = new List<FixtureBatchSyncPlan>();
+
+        foreach (var fixture in fixtures)
+        {
+            var coverageKey = $"{fixture.League.ApiLeagueId}:{fixture.Season}";
+            if (!coverageCache.TryGetValue(coverageKey, out var coverage))
+            {
+                coverage = await _leagueCoverageService.GetCoverageAsync(
+                    fixture.League.ApiLeagueId,
+                    fixture.Season,
+                    cancellationToken);
+
+                coverageCache[coverageKey] = coverage;
+            }
+
+            var bucket = FixtureStatusMapper.GetStateBucket(fixture.Status);
+            var skippedComponents = new List<string>();
+
+            var shouldSyncEvents = ShouldSyncEvents(fixture, bucket, coverage, force, nowUtc, skippedComponents);
+            var shouldSyncStatistics = ShouldSyncStatistics(fixture, bucket, coverage, force, nowUtc, skippedComponents);
+            var shouldSyncLineups = ShouldSyncLineups(fixture, bucket, coverage, force, nowUtc, skippedComponents);
+            var shouldSyncPlayers = ShouldSyncPlayers(fixture, bucket, coverage, includePlayers, force, nowUtc, skippedComponents);
+
+            if (bucket != FixtureStateBucket.Finished && fixture.PostFinishMatchCenterSyncCount != 0)
+            {
+                fixture.PostFinishMatchCenterSyncCount = 0;
+            }
+
+            plans.Add(new FixtureBatchSyncPlan
+            {
+                Fixture = fixture,
+                Bucket = bucket,
+                SkippedComponents = skippedComponents,
+                ShouldSyncEvents = shouldSyncEvents,
+                ShouldSyncStatistics = shouldSyncStatistics,
+                ShouldSyncLineups = shouldSyncLineups,
+                ShouldSyncPlayers = shouldSyncPlayers
+            });
+        }
+
+        var fixturesToFetch = plans
+            .Where(x => x.ShouldSyncEvents || x.ShouldSyncStatistics || x.ShouldSyncLineups || x.ShouldSyncPlayers)
+            .Select(x => x.Fixture.ApiFixtureId)
+            .Distinct()
+            .ToList();
+
+        var fixturesByApiId = new Dictionary<long, ApiFootballFixtureItem>();
+
+        foreach (var chunk in fixturesToFetch.Chunk(BatchFixtureIdsSize))
+        {
+            var chunkItems = await _apiService.GetFixturesByIdsAsync(chunk, cancellationToken);
+            foreach (var item in chunkItems)
+            {
+                fixturesByApiId[item.Fixture.Id] = item;
+            }
+        }
 
         var items = new List<FixtureMatchCenterSyncDto>();
 
-        foreach (var apiFixtureId in fixtureIds)
+        foreach (var plan in plans)
         {
-            items.Add(await SyncFixtureAsync(
-                apiFixtureId,
-                includePlayers,
-                force,
-                cancellationToken));
+            var fixture = plan.Fixture;
+            var syncedAny = false;
+            fixturesByApiId.TryGetValue(fixture.ApiFixtureId, out var source);
+
+            if ((plan.ShouldSyncEvents || plan.ShouldSyncStatistics || plan.ShouldSyncLineups || plan.ShouldSyncPlayers) &&
+                source is null)
+            {
+                plan.SkippedComponents.Add("batch:not_returned");
+                items.Add(new FixtureMatchCenterSyncDto
+                {
+                    ApiFixtureId = fixture.ApiFixtureId,
+                    LeagueApiId = fixture.League.ApiLeagueId,
+                    Season = fixture.Season,
+                    StateBucket = plan.Bucket.ToString(),
+                    Forced = force,
+                    PlayersIncluded = includePlayers,
+                    EventsSynced = false,
+                    StatisticsSynced = false,
+                    LineupsSynced = false,
+                    PlayersSynced = false,
+                    SkippedComponents = plan.SkippedComponents,
+                    ExecutedAtUtc = nowUtc,
+                    Freshness = MapFreshness(fixture)
+                });
+                continue;
+            }
+
+            if (plan.ShouldSyncEvents)
+            {
+                await ReplaceEventsAsync(fixture, source!.Events, nowUtc, cancellationToken);
+                fixture.LastEventSyncedAtUtc = nowUtc;
+                syncedAny = true;
+
+                await _syncStateService.SetLastSyncedAtAsync(
+                    "fixture_events",
+                    fixture.League.ApiLeagueId,
+                    fixture.Season,
+                    nowUtc,
+                    cancellationToken);
+            }
+
+            if (plan.ShouldSyncStatistics)
+            {
+                await ReplaceStatisticsAsync(fixture, source!.Statistics, nowUtc, cancellationToken);
+                fixture.LastStatisticsSyncedAtUtc = nowUtc;
+                syncedAny = true;
+
+                await _syncStateService.SetLastSyncedAtAsync(
+                    "fixture_statistics",
+                    fixture.League.ApiLeagueId,
+                    fixture.Season,
+                    nowUtc,
+                    cancellationToken);
+            }
+
+            if (plan.ShouldSyncLineups)
+            {
+                await ReplaceLineupsAsync(fixture, source!.Lineups, nowUtc, cancellationToken);
+                fixture.LastLineupsSyncedAtUtc = nowUtc;
+                syncedAny = true;
+
+                await _syncStateService.SetLastSyncedAtAsync(
+                    "fixture_lineups",
+                    fixture.League.ApiLeagueId,
+                    fixture.Season,
+                    nowUtc,
+                    cancellationToken);
+            }
+
+            if (plan.ShouldSyncPlayers)
+            {
+                await ReplacePlayerStatisticsAsync(fixture, source!.Players, nowUtc, cancellationToken);
+                fixture.LastPlayerStatisticsSyncedAtUtc = nowUtc;
+                syncedAny = true;
+
+                await _syncStateService.SetLastSyncedAtAsync(
+                    "fixture_player_statistics",
+                    fixture.League.ApiLeagueId,
+                    fixture.Season,
+                    nowUtc,
+                    cancellationToken);
+            }
+
+            if (plan.Bucket == FixtureStateBucket.Finished && syncedAny)
+            {
+                fixture.PostFinishMatchCenterSyncCount++;
+            }
+
+            items.Add(new FixtureMatchCenterSyncDto
+            {
+                ApiFixtureId = fixture.ApiFixtureId,
+                LeagueApiId = fixture.League.ApiLeagueId,
+                Season = fixture.Season,
+                StateBucket = plan.Bucket.ToString(),
+                Forced = force,
+                PlayersIncluded = includePlayers,
+                EventsSynced = plan.ShouldSyncEvents,
+                StatisticsSynced = plan.ShouldSyncStatistics,
+                LineupsSynced = plan.ShouldSyncLineups,
+                PlayersSynced = plan.ShouldSyncPlayers,
+                SkippedComponents = plan.SkippedComponents,
+                ExecutedAtUtc = nowUtc,
+                Freshness = MapFreshness(fixture)
+            });
         }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new LiveMatchCenterSyncDto
         {
-            FixturesConsidered = fixtureIds.Count,
+            FixturesConsidered = fixtures.Count,
             FixturesSynced = items.Count(x => x.EventsSynced || x.StatisticsSynced || x.LineupsSynced || x.PlayersSynced),
             PlayersIncluded = includePlayers,
             ExecutedAtUtc = nowUtc,
@@ -439,6 +599,7 @@ public class FixtureMatchCenterSyncService
     {
         return new FixtureFreshnessDto
         {
+            LastLiveStatusSyncedAtUtc = fixture.LastLiveStatusSyncedAtUtc,
             LastEventSyncedAtUtc = fixture.LastEventSyncedAtUtc,
             LastStatisticsSyncedAtUtc = fixture.LastStatisticsSyncedAtUtc,
             LastLineupsSyncedAtUtc = fixture.LastLineupsSyncedAtUtc,
@@ -618,5 +779,16 @@ public class FixtureMatchCenterSyncService
     {
         skipped.Add(reason);
         return false;
+    }
+
+    private sealed class FixtureBatchSyncPlan
+    {
+        public Fixture Fixture { get; set; } = null!;
+        public FixtureStateBucket Bucket { get; set; }
+        public List<string> SkippedComponents { get; set; } = new();
+        public bool ShouldSyncEvents { get; set; }
+        public bool ShouldSyncStatistics { get; set; }
+        public bool ShouldSyncLineups { get; set; }
+        public bool ShouldSyncPlayers { get; set; }
     }
 }

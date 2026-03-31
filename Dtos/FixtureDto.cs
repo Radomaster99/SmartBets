@@ -9,7 +9,15 @@ public class FixtureDto
     public int Season { get; set; }
     public DateTime KickoffAt { get; set; }
     public string? Status { get; set; }
+    public string? StatusLong { get; set; }
+    public int? Elapsed { get; set; }
+    public int? StatusExtra { get; set; }
     public FixtureStateBucket StateBucket { get; set; }
+    public string? Referee { get; set; }
+    public string? Timezone { get; set; }
+    public string? VenueName { get; set; }
+    public string? VenueCity { get; set; }
+    public string? Round { get; set; }
 
     public long LeagueId { get; set; }
     public long LeagueApiId { get; set; }

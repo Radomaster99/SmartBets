@@ -25,6 +25,8 @@ public class AppDbContext : DbContext
     public DbSet<LeagueTopAssist> LeagueTopAssists => Set<LeagueTopAssist>();
     public DbSet<LeagueTopCard> LeagueTopCards => Set<LeagueTopCard>();
     public DbSet<Bookmaker> Bookmakers => Set<Bookmaker>();
+    public DbSet<LiveBetType> LiveBetTypes => Set<LiveBetType>();
+    public DbSet<LiveOdd> LiveOdds => Set<LiveOdd>();
     public DbSet<PreMatchOdd> PreMatchOdds => Set<PreMatchOdd>();
     public DbSet<OddsOpenClose> OddsOpenCloses => Set<OddsOpenClose>();
     public DbSet<OddsMovement> OddsMovements => Set<OddsMovement>();
@@ -164,6 +166,35 @@ public class AppDbContext : DbContext
                 .HasColumnName("logo_url")
                 .HasMaxLength(500);
 
+            entity.Property(x => x.Founded)
+                .HasColumnName("founded");
+
+            entity.Property(x => x.IsNational)
+                .HasColumnName("is_national");
+
+            entity.Property(x => x.VenueName)
+                .HasColumnName("venue_name")
+                .HasMaxLength(200);
+
+            entity.Property(x => x.VenueAddress)
+                .HasColumnName("venue_address")
+                .HasMaxLength(300);
+
+            entity.Property(x => x.VenueCity)
+                .HasColumnName("venue_city")
+                .HasMaxLength(200);
+
+            entity.Property(x => x.VenueCapacity)
+                .HasColumnName("venue_capacity");
+
+            entity.Property(x => x.VenueSurface)
+                .HasColumnName("venue_surface")
+                .HasMaxLength(100);
+
+            entity.Property(x => x.VenueImageUrl)
+                .HasColumnName("venue_image_url")
+                .HasMaxLength(500);
+
             entity.HasIndex(x => x.ApiTeamId)
                 .IsUnique();
 
@@ -199,6 +230,36 @@ public class AppDbContext : DbContext
                 .HasColumnName("status")
                 .HasMaxLength(100);
 
+            entity.Property(x => x.StatusLong)
+                .HasColumnName("status_long")
+                .HasMaxLength(200);
+
+            entity.Property(x => x.Elapsed)
+                .HasColumnName("elapsed");
+
+            entity.Property(x => x.StatusExtra)
+                .HasColumnName("status_extra");
+
+            entity.Property(x => x.Referee)
+                .HasColumnName("referee")
+                .HasMaxLength(200);
+
+            entity.Property(x => x.Timezone)
+                .HasColumnName("timezone")
+                .HasMaxLength(100);
+
+            entity.Property(x => x.VenueName)
+                .HasColumnName("venue_name")
+                .HasMaxLength(200);
+
+            entity.Property(x => x.VenueCity)
+                .HasColumnName("venue_city")
+                .HasMaxLength(200);
+
+            entity.Property(x => x.Round)
+                .HasColumnName("round")
+                .HasMaxLength(200);
+
             entity.Property(x => x.HomeTeamId)
                 .HasColumnName("home_team_id");
 
@@ -210,6 +271,9 @@ public class AppDbContext : DbContext
 
             entity.Property(x => x.AwayGoals)
                 .HasColumnName("away_goals");
+
+            entity.Property(x => x.LastLiveStatusSyncedAtUtc)
+                .HasColumnName("last_live_status_synced_at_utc");
 
             entity.Property(x => x.LastEventSyncedAtUtc)
                 .HasColumnName("last_event_synced_at_utc");
@@ -688,6 +752,100 @@ public class AppDbContext : DbContext
 
             entity.HasIndex(x => x.ApiBookmakerId)
                 .IsUnique();
+        });
+
+        modelBuilder.Entity<LiveBetType>(entity =>
+        {
+            entity.ToTable("live_bet_types");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.ApiBetId)
+                .HasColumnName("api_bet_id");
+
+            entity.Property(x => x.Name)
+                .HasColumnName("name")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.SyncedAtUtc)
+                .HasColumnName("synced_at_utc");
+
+            entity.HasIndex(x => x.ApiBetId)
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<LiveOdd>(entity =>
+        {
+            entity.ToTable("live_odds");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.FixtureId)
+                .HasColumnName("fixture_id");
+
+            entity.Property(x => x.BookmakerId)
+                .HasColumnName("bookmaker_id");
+
+            entity.Property(x => x.ApiBetId)
+                .HasColumnName("api_bet_id");
+
+            entity.Property(x => x.BetName)
+                .HasColumnName("bet_name")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.OutcomeLabel)
+                .HasColumnName("outcome_label")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.Line)
+                .HasColumnName("line")
+                .HasMaxLength(100);
+
+            entity.Property(x => x.Odd)
+                .HasColumnName("odd");
+
+            entity.Property(x => x.IsMain)
+                .HasColumnName("is_main");
+
+            entity.Property(x => x.Stopped)
+                .HasColumnName("stopped");
+
+            entity.Property(x => x.Blocked)
+                .HasColumnName("blocked");
+
+            entity.Property(x => x.Finished)
+                .HasColumnName("finished");
+
+            entity.Property(x => x.CollectedAtUtc)
+                .HasColumnName("collected_at_utc");
+
+            entity.HasIndex(x => x.FixtureId);
+            entity.HasIndex(x => x.BookmakerId);
+            entity.HasIndex(x => x.ApiBetId);
+            entity.HasIndex(x => new { x.FixtureId, x.BookmakerId, x.ApiBetId, x.OutcomeLabel, x.Line, x.CollectedAtUtc });
+
+            entity.HasOne(x => x.Fixture)
+                .WithMany(x => x.LiveOdds)
+                .HasForeignKey(x => x.FixtureId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Bookmaker)
+                .WithMany(x => x.LiveOdds)
+                .HasForeignKey(x => x.BookmakerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(x => x.LiveBetType)
+                .WithMany(x => x.LiveOdds)
+                .HasForeignKey(x => x.ApiBetId)
+                .HasPrincipalKey(x => x.ApiBetId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PreMatchOdd>(entity =>

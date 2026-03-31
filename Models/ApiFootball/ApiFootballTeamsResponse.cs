@@ -14,7 +14,7 @@ public class ApiFootballTeamItem
     public ApiFootballTeam Team { get; set; } = new();
 
     [JsonPropertyName("venue")]
-    public object? Venue { get; set; } // не ни трябва за момента
+    public ApiFootballTeamVenue Venue { get; set; } = new();
 }
 
 public class ApiFootballTeam
@@ -33,4 +33,34 @@ public class ApiFootballTeam
 
     [JsonPropertyName("country")]
     public string? Country { get; set; }
+
+    [JsonPropertyName("founded")]
+    public int? Founded { get; set; }
+
+    [JsonPropertyName("national")]
+    public bool? National { get; set; }
+}
+
+public class ApiFootballTeamVenue
+{
+    [JsonPropertyName("id")]
+    public long? Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("address")]
+    public string? Address { get; set; }
+
+    [JsonPropertyName("city")]
+    public string? City { get; set; }
+
+    [JsonPropertyName("capacity")]
+    public int? Capacity { get; set; }
+
+    [JsonPropertyName("surface")]
+    public string? Surface { get; set; }
+
+    [JsonPropertyName("image")]
+    public string? Image { get; set; }
 }
