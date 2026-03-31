@@ -17,11 +17,78 @@ public class AdminSupportedLeaguesController : ControllerBase
         _dbContext = dbContext;
     }
 
+    [HttpGet]
+    public async Task<IActionResult> GetAll(CancellationToken cancellationToken = default)
+    {
+        var items = await _dbContext.SupportedLeagues
+            .AsNoTracking()
+            .OrderBy(x => x.Priority)
+            .ThenBy(x => x.LeagueApiId)
+            .Select(x => new
+            {
+                x.Id,
+                x.LeagueApiId,
+                x.Season,
+                x.IsActive,
+                x.Priority,
+                CreatedAtUtc = x.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(items);
+    }
+
+    [HttpGet("{id:long}")]
+    public async Task<IActionResult> GetById(long id, CancellationToken cancellationToken = default)
+    {
+        var item = await _dbContext.SupportedLeagues
+            .AsNoTracking()
+            .Where(x => x.Id == id)
+            .Select(x => new
+            {
+                x.Id,
+                x.LeagueApiId,
+                x.Season,
+                x.IsActive,
+                x.Priority,
+                CreatedAtUtc = x.CreatedAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return item is null
+            ? NotFound(new { Message = "Supported league entry not found." })
+            : Ok(item);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create(
-        [FromBody] SupportedLeagueUpsertDto request,
+        [FromBody] SupportedLeagueUpsertDto? request,
+        [FromQuery] long? leagueApiId,
+        [FromQuery] int? season,
+        [FromQuery] bool? isActive,
+        [FromQuery] int? priority,
         CancellationToken cancellationToken = default)
     {
+        request ??= new SupportedLeagueUpsertDto();
+
+        if (leagueApiId.HasValue)
+            request.LeagueApiId = leagueApiId.Value;
+
+        if (season.HasValue)
+            request.Season = season.Value;
+
+        if (isActive.HasValue)
+            request.IsActive = isActive.Value;
+
+        if (priority.HasValue)
+            request.Priority = priority.Value;
+
+        if (request.LeagueApiId <= 0)
+            return BadRequest("leagueApiId must be greater than 0.");
+
+        if (request.Season <= 0)
+            return BadRequest("season must be greater than 0.");
+
         if (request.Priority < 0)
             return BadRequest("priority cannot be negative.");
 

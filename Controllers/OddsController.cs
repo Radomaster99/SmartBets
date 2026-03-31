@@ -31,6 +31,12 @@ public class OddsController : ControllerBase
         [FromQuery] string? marketName,
         CancellationToken cancellationToken)
     {
+        if (leagueId <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
         var result = await _preMatchOddsService.SyncOddsAsync(
             leagueId,
             season,
@@ -97,6 +103,18 @@ public class OddsController : ControllerBase
         if (!fixtureId.HasValue && !leagueId.HasValue)
             return BadRequest("Provide fixtureId or leagueId.");
 
+        if (fixtureId.HasValue && fixtureId.Value <= 0)
+            return BadRequest("fixtureId must be greater than 0.");
+
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (betId.HasValue && betId.Value <= 0)
+            return BadRequest("betId must be greater than 0.");
+
+        if (bookmakerId.HasValue && bookmakerId.Value <= 0)
+            return BadRequest("bookmakerId must be greater than 0.");
+
         var result = await _liveOddsService.SyncLiveOddsAsync(
             fixtureId,
             leagueId,
@@ -150,6 +168,15 @@ public class OddsController : ControllerBase
         {
             return BadRequest("Provide apiFixtureId or leagueId + season.");
         }
+
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season.HasValue && season.Value <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        if (apiFixtureId.HasValue && apiFixtureId.Value <= 0)
+            return BadRequest("apiFixtureId must be greater than 0.");
 
         var result = await _oddsAnalyticsService.RebuildAnalyticsAsync(
             leagueId,

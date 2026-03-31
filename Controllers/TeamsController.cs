@@ -34,6 +34,12 @@ public class TeamsController : ControllerBase
         [FromQuery] int maxLeagues = 5,
         CancellationToken cancellationToken = default)
     {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
         if (maxLeagues <= 0)
             return BadRequest("maxLeagues must be greater than 0.");
 

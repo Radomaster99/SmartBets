@@ -137,15 +137,45 @@ app.UseExceptionHandler(errorApp =>
             }
         }
 
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        var (statusCode, title, detail) = ex switch
+        {
+            InvalidOperationException invalidOp when IsMissingApiFootballConfig(invalidOp) => (
+                StatusCodes.Status503ServiceUnavailable,
+                "API-Football configuration is missing.",
+                invalidOp.Message),
+            InvalidOperationException invalidOp when IsRateLimitError(invalidOp) => (
+                StatusCodes.Status429TooManyRequests,
+                "API-Football rate limit reached.",
+                invalidOp.Message),
+            InvalidOperationException invalidOp when IsNotFoundLike(invalidOp) => (
+                StatusCodes.Status404NotFound,
+                "Requested resource was not found.",
+                invalidOp.Message),
+            InvalidOperationException invalidOp => (
+                StatusCodes.Status400BadRequest,
+                "The request could not be completed.",
+                invalidOp.Message),
+            ArgumentException argumentException => (
+                StatusCodes.Status400BadRequest,
+                "The request is invalid.",
+                argumentException.Message),
+            _ => (
+                StatusCodes.Status500InternalServerError,
+                "An unexpected error occurred.",
+                Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development" ? ex?.Message : null)
+        };
+
+        context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/problem+json";
 
         var problem = new
         {
-            type = "https://example.com/probs/internal-server-error",
-            title = "An unexpected error occurred.",
-            status = 500,
-            detail = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development" ? ex?.Message : null
+            type = statusCode == 500
+                ? "https://example.com/probs/internal-server-error"
+                : "https://example.com/probs/request-error",
+            title,
+            status = statusCode,
+            detail
         };
 
         await context.Response.WriteAsJsonAsync(problem);
@@ -205,3 +235,19 @@ app.MapControllers();
 app.MapGet("/ping", () => "pong");
 
 app.Run();
+
+static bool IsMissingApiFootballConfig(InvalidOperationException exception)
+{
+    return exception.Message.Contains("ApiFootball:BaseUrl", StringComparison.OrdinalIgnoreCase) ||
+           exception.Message.Contains("ApiFootball:ApiKey", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsRateLimitError(InvalidOperationException exception)
+{
+    return exception.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsNotFoundLike(InvalidOperationException exception)
+{
+    return exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase);
+}

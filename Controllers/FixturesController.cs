@@ -57,6 +57,12 @@ public class FixturesController : ControllerBase
         [FromQuery] int maxLeagues = 5,
         CancellationToken cancellationToken = default)
     {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
         if (maxLeagues <= 0)
             return BadRequest("maxLeagues must be greater than 0.");
 
@@ -140,6 +146,12 @@ public class FixturesController : ControllerBase
         [FromQuery] int season,
         CancellationToken cancellationToken)
     {
+        if (leagueId <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
         var result = await _fixtureSyncService.SyncUpcomingFixturesAsync(
             leagueId,
             season,
@@ -173,6 +185,9 @@ public class FixturesController : ControllerBase
         [FromQuery] bool activeOnly = true,
         CancellationToken cancellationToken = default)
     {
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
         var result = await _fixtureLiveStatusSyncService.SyncLiveFixturesAsync(
             leagueId,
             activeOnly,
@@ -188,6 +203,9 @@ public class FixturesController : ControllerBase
         [FromQuery] bool force = false,
         CancellationToken cancellationToken = default)
     {
+        if (apiFixtureId <= 0)
+            return BadRequest("apiFixtureId must be greater than 0.");
+
         var result = await _fixtureMatchCenterSyncService.SyncFixtureAsync(
             apiFixtureId,
             includePlayers,
@@ -206,6 +224,15 @@ public class FixturesController : ControllerBase
         [FromQuery] bool force = false,
         CancellationToken cancellationToken = default)
     {
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season.HasValue && season.Value <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        if (maxFixtures <= 0)
+            return BadRequest("maxFixtures must be greater than 0.");
+
         var result = await _fixtureMatchCenterSyncService.SyncLiveFixturesAsync(
             leagueId,
             season,
@@ -223,6 +250,9 @@ public class FixturesController : ControllerBase
         [FromQuery] bool force = false,
         CancellationToken cancellationToken = default)
     {
+        if (apiFixtureId <= 0)
+            return BadRequest("apiFixtureId must be greater than 0.");
+
         var result = await _fixturePreviewSyncService.SyncFixtureAsync(
             apiFixtureId,
             force,
@@ -240,6 +270,18 @@ public class FixturesController : ControllerBase
         [FromQuery] bool force = false,
         CancellationToken cancellationToken = default)
     {
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season.HasValue && season.Value <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        if (windowHours <= 0)
+            return BadRequest("windowHours must be greater than 0.");
+
+        if (maxFixtures <= 0)
+            return BadRequest("maxFixtures must be greater than 0.");
+
         var result = await _fixturePreviewSyncService.SyncUpcomingFixturesAsync(
             leagueId,
             season,

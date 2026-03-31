@@ -30,6 +30,12 @@ public class BookmakersController : ControllerBase
         [FromQuery] int season,
         CancellationToken cancellationToken)
     {
+        if (leagueId <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
         var result = await _syncService.SyncBookmakersAsync(leagueId, season, cancellationToken);
         var syncedAtUtc = DateTime.UtcNow;
 
