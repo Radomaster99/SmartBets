@@ -56,6 +56,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // HTTP client
 builder.Services.AddHttpClient<FootballApiService>();
 builder.Services.Configure<LiveAutomationOptions>(builder.Configuration.GetSection("LiveAutomation"));
+builder.Services.Configure<ApiFootballClientOptions>(builder.Configuration.GetSection("ApiFootballClient"));
+builder.Services.Configure<DataRetentionOptions>(builder.Configuration.GetSection("DataRetention"));
+builder.Services.AddSingleton<ApiFootballQuotaTelemetryService>();
 
 // Services
 builder.Services.AddScoped<CountrySyncService>();
@@ -80,7 +83,9 @@ builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
 builder.Services.AddScoped<StandingsSyncService>();
 builder.Services.AddScoped<LiveAutomationOrchestrator>();
+builder.Services.AddScoped<DataRetentionService>();
 builder.Services.AddHostedService<LiveAutomationBackgroundService>();
+builder.Services.AddHostedService<DataRetentionBackgroundService>();
 
 // CORS
 var allowedOrigins = builder.Configuration["CORS:AllowedOrigins"]?

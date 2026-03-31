@@ -253,6 +253,7 @@ public class FixtureMatchCenterSyncService
         }
 
         var items = new List<FixtureMatchCenterSyncDto>();
+        var syncStateItems = new List<SyncStateUpsertItem>();
 
         foreach (var plan in plans)
         {
@@ -288,13 +289,13 @@ public class FixtureMatchCenterSyncService
                 await ReplaceEventsAsync(fixture, source!.Events, nowUtc, cancellationToken);
                 fixture.LastEventSyncedAtUtc = nowUtc;
                 syncedAny = true;
-
-                await _syncStateService.SetLastSyncedAtAsync(
-                    "fixture_events",
-                    fixture.League.ApiLeagueId,
-                    fixture.Season,
-                    nowUtc,
-                    cancellationToken);
+                syncStateItems.Add(new SyncStateUpsertItem
+                {
+                    EntityType = "fixture_events",
+                    LeagueApiId = fixture.League.ApiLeagueId,
+                    Season = fixture.Season,
+                    SyncedAtUtc = nowUtc
+                });
             }
 
             if (plan.ShouldSyncStatistics)
@@ -302,13 +303,13 @@ public class FixtureMatchCenterSyncService
                 await ReplaceStatisticsAsync(fixture, source!.Statistics, nowUtc, cancellationToken);
                 fixture.LastStatisticsSyncedAtUtc = nowUtc;
                 syncedAny = true;
-
-                await _syncStateService.SetLastSyncedAtAsync(
-                    "fixture_statistics",
-                    fixture.League.ApiLeagueId,
-                    fixture.Season,
-                    nowUtc,
-                    cancellationToken);
+                syncStateItems.Add(new SyncStateUpsertItem
+                {
+                    EntityType = "fixture_statistics",
+                    LeagueApiId = fixture.League.ApiLeagueId,
+                    Season = fixture.Season,
+                    SyncedAtUtc = nowUtc
+                });
             }
 
             if (plan.ShouldSyncLineups)
@@ -316,13 +317,13 @@ public class FixtureMatchCenterSyncService
                 await ReplaceLineupsAsync(fixture, source!.Lineups, nowUtc, cancellationToken);
                 fixture.LastLineupsSyncedAtUtc = nowUtc;
                 syncedAny = true;
-
-                await _syncStateService.SetLastSyncedAtAsync(
-                    "fixture_lineups",
-                    fixture.League.ApiLeagueId,
-                    fixture.Season,
-                    nowUtc,
-                    cancellationToken);
+                syncStateItems.Add(new SyncStateUpsertItem
+                {
+                    EntityType = "fixture_lineups",
+                    LeagueApiId = fixture.League.ApiLeagueId,
+                    Season = fixture.Season,
+                    SyncedAtUtc = nowUtc
+                });
             }
 
             if (plan.ShouldSyncPlayers)
@@ -330,13 +331,13 @@ public class FixtureMatchCenterSyncService
                 await ReplacePlayerStatisticsAsync(fixture, source!.Players, nowUtc, cancellationToken);
                 fixture.LastPlayerStatisticsSyncedAtUtc = nowUtc;
                 syncedAny = true;
-
-                await _syncStateService.SetLastSyncedAtAsync(
-                    "fixture_player_statistics",
-                    fixture.League.ApiLeagueId,
-                    fixture.Season,
-                    nowUtc,
-                    cancellationToken);
+                syncStateItems.Add(new SyncStateUpsertItem
+                {
+                    EntityType = "fixture_player_statistics",
+                    LeagueApiId = fixture.League.ApiLeagueId,
+                    Season = fixture.Season,
+                    SyncedAtUtc = nowUtc
+                });
             }
 
             if (plan.Bucket == FixtureStateBucket.Finished && syncedAny)
@@ -363,6 +364,7 @@ public class FixtureMatchCenterSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _syncStateService.SetLastSyncedAtBatchAsync(syncStateItems, cancellationToken);
 
         return new LiveMatchCenterSyncDto
         {

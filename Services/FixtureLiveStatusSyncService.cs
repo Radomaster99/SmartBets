@@ -153,23 +153,19 @@ public class FixtureLiveStatusSyncService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        foreach (var scope in touchedScopes)
-        {
-            var parts = scope.Split(':', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length != 2)
-                continue;
-
-            if (long.TryParse(parts[0], out var parsedLeagueId) &&
-                int.TryParse(parts[1], out var parsedSeason))
+        var syncStateItems = touchedScopes
+            .Select(ParseLeagueSeasonScope)
+            .Where(x => x is not null)
+            .Select(x => new SyncStateUpsertItem
             {
-                await _syncStateService.SetLastSyncedAtAsync(
-                    "fixtures_live",
-                    parsedLeagueId,
-                    parsedSeason,
-                    nowUtc,
-                    cancellationToken);
-            }
-        }
+                EntityType = "fixtures_live",
+                LeagueApiId = x!.LeagueApiId,
+                Season = x.Season,
+                SyncedAtUtc = nowUtc
+            })
+            .ToList();
+
+        await _syncStateService.SetLastSyncedAtBatchAsync(syncStateItems, cancellationToken);
 
         return result;
     }
@@ -198,4 +194,18 @@ public class FixtureLiveStatusSyncService
     {
         return $"{leagueApiId}:{season}";
     }
+
+    private static LeagueSeasonScope? ParseLeagueSeasonScope(string scope)
+    {
+        var parts = scope.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+            return null;
+
+        if (!long.TryParse(parts[0], out var leagueApiId) || !int.TryParse(parts[1], out var season))
+            return null;
+
+        return new LeagueSeasonScope(leagueApiId, season);
+    }
+
+    private sealed record LeagueSeasonScope(long LeagueApiId, int Season);
 }

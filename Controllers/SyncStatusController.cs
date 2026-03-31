@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SmartBets.Data;
 using SmartBets.Dtos;
+using SmartBets.Services;
 
 namespace SmartBets.Controllers;
 
@@ -10,10 +12,17 @@ namespace SmartBets.Controllers;
 public class SyncStatusController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
+    private readonly ApiFootballQuotaTelemetryService _quotaTelemetryService;
+    private readonly IOptionsMonitor<ApiFootballClientOptions> _apiFootballClientOptions;
 
-    public SyncStatusController(AppDbContext dbContext)
+    public SyncStatusController(
+        AppDbContext dbContext,
+        ApiFootballQuotaTelemetryService quotaTelemetryService,
+        IOptionsMonitor<ApiFootballClientOptions> apiFootballClientOptions)
     {
         _dbContext = dbContext;
+        _quotaTelemetryService = quotaTelemetryService;
+        _apiFootballClientOptions = apiFootballClientOptions;
     }
 
     [HttpGet]
@@ -131,8 +140,25 @@ public class SyncStatusController : ControllerBase
         return Ok(new SyncStatusDto
         {
             GeneratedAtUtc = DateTime.UtcNow,
+            ApiQuota = MapQuotaStatus(),
             Global = global,
             Leagues = leagueStatuses
         });
+    }
+
+    private ApiQuotaStatusDto MapQuotaStatus()
+    {
+        var snapshot = _quotaTelemetryService.GetSnapshot(_apiFootballClientOptions.CurrentValue);
+
+        return new ApiQuotaStatusDto
+        {
+            Provider = "api-football",
+            Mode = snapshot.Mode.ToString(),
+            RequestsDailyLimit = snapshot.RequestsDailyLimit,
+            RequestsDailyRemaining = snapshot.RequestsDailyRemaining,
+            RequestsMinuteLimit = snapshot.RequestsMinuteLimit,
+            RequestsMinuteRemaining = snapshot.RequestsMinuteRemaining,
+            LastObservedAtUtc = snapshot.LastObservedAtUtc
+        };
     }
 }

@@ -9,21 +9,22 @@ public class BookmakerSyncResult
     public int Processed { get; set; }
     public int Inserted { get; set; }
     public int Updated { get; set; }
+    public int PreMatchOddsReferences { get; set; }
+    public int LiveOddsReferences { get; set; }
+    public int RemoteCallsMade { get; set; }
+    public string Source { get; set; } = "local_cache";
 }
 
 public class BookmakerSyncService
 {
     private readonly AppDbContext _dbContext;
-    private readonly FootballApiService _apiService;
     private readonly LeagueCoverageService _leagueCoverageService;
 
     public BookmakerSyncService(
         AppDbContext dbContext,
-        FootballApiService apiService,
         LeagueCoverageService leagueCoverageService)
     {
         _dbContext = dbContext;
-        _apiService = apiService;
         _leagueCoverageService = leagueCoverageService;
     }
 
@@ -39,47 +40,32 @@ public class BookmakerSyncService
             throw new InvalidOperationException($"League with apiLeagueId {leagueId} and season {season} was not found in database.");
         }
 
-        var oddsResponse = await _apiService.GetOddsAsync(leagueId, season, cancellationToken);
-
-        var existingBookmakers = await _dbContext.Bookmakers.ToListAsync(cancellationToken);
-        var existingByApiId = existingBookmakers.ToDictionary(x => x.ApiBookmakerId, x => x);
-
         var result = new BookmakerSyncResult();
-        var processedBookmakerIds = new HashSet<long>();
 
-        foreach (var fixtureItem in oddsResponse)
-        {
-            foreach (var apiBookmaker in fixtureItem.Bookmakers)
-            {
-                if (!processedBookmakerIds.Add(apiBookmaker.Id))
-                    continue;
+        var scopedFixtureIds = _dbContext.Fixtures
+            .Where(x => x.League.ApiLeagueId == leagueId && x.Season == season)
+            .Select(x => x.Id);
 
-                if (existingByApiId.TryGetValue(apiBookmaker.Id, out var existing))
-                {
-                    if (existing.Name != apiBookmaker.Name.Trim())
-                    {
-                        existing.Name = apiBookmaker.Name.Trim();
-                        result.Updated++;
-                    }
-                }
-                else
-                {
-                    var newBookmaker = new Bookmaker
-                    {
-                        ApiBookmakerId = apiBookmaker.Id,
-                        Name = apiBookmaker.Name.Trim()
-                    };
+        var preMatchBookmakerIds = await _dbContext.PreMatchOdds
+            .AsNoTracking()
+            .Where(x => scopedFixtureIds.Contains(x.FixtureId))
+            .Select(x => x.BookmakerId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
-                    _dbContext.Bookmakers.Add(newBookmaker);
-                    existingByApiId[apiBookmaker.Id] = newBookmaker;
-                    result.Inserted++;
-                }
+        var liveOddsBookmakerIds = await _dbContext.LiveOdds
+            .AsNoTracking()
+            .Where(x => scopedFixtureIds.Contains(x.FixtureId))
+            .Select(x => x.BookmakerId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
-                result.Processed++;
-            }
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        result.PreMatchOddsReferences = preMatchBookmakerIds.Count;
+        result.LiveOddsReferences = liveOddsBookmakerIds.Count;
+        result.Processed = preMatchBookmakerIds
+            .Concat(liveOddsBookmakerIds)
+            .Distinct()
+            .Count();
 
         return result;
     }

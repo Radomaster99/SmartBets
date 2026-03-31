@@ -2069,3 +2069,95 @@ It does not replace your broader manual/admin sync flows such as:
 - league analytics
 
 Those remain separate by design.
+
+## 28. Stage 9: Production Hardening
+
+Stage 9 improves operational stability and quota efficiency without changing the schema.
+
+### 28.1 API Quota Telemetry
+
+`GET /api/sync-status` now also returns runtime API-Football quota information under:
+- `ApiQuota`
+
+`ApiQuotaStatusDto`:
+- `Provider`
+- `Mode`
+- `RequestsDailyLimit`
+- `RequestsDailyRemaining`
+- `RequestsMinuteLimit`
+- `RequestsMinuteRemaining`
+- `LastObservedAtUtc`
+
+`Mode` values:
+- `Normal`
+- `Low`
+- `Critical`
+
+This data is captured from API-Football response headers and kept in memory by the app instance.
+
+### 28.2 Outbound Request Throttling
+
+The API client now applies:
+- minimum request spacing
+- additional delay in `Low` quota mode
+- stronger delay in `Critical` quota mode
+
+Config section:
+
+`ApiFootballClient`
+
+Fields:
+- `MinRequestSpacingMs`
+- `LowMinuteRemainingThreshold`
+- `CriticalMinuteRemainingThreshold`
+- `LowDailyRemainingThreshold`
+- `CriticalDailyRemainingThreshold`
+- `LowQuotaDelayMs`
+- `CriticalQuotaDelayMs`
+
+### 28.3 Live Automation Quota Guards
+
+The internal live worker now uses quota mode as an extra guard:
+- player automation is allowed only in `Normal`
+- live odds auto-sync is allowed only in `Normal`
+- match-center scope is reduced when quota becomes `Low` or `Critical`
+
+This keeps the cheap live heartbeat as the last feature to sacrifice.
+
+### 28.4 Data Retention Worker
+
+A new background cleanup worker periodically trims:
+- `sync_errors`
+- `live_odds`
+- `pre_match_odds`
+- `odds_open_close`
+- `odds_movements`
+- `market_consensus`
+
+Config section:
+
+`DataRetention`
+
+Fields:
+- `Enabled`
+- `IntervalHours`
+- `ErrorRetryMinutes`
+- `SyncErrorsRetentionDays`
+- `LiveOddsRetentionDays`
+- `PreMatchOddsRetentionDays`
+
+### 28.5 Bookmakers Sync Change
+
+`POST /api/bookmakers/sync` is now local-cache based:
+- it no longer downloads the heavy API-Football odds dataset just to discover bookmaker names
+- it rebuilds bookmaker scope from already stored `pre_match_odds` and `live_odds`
+
+Response now also includes:
+- `Source`
+- `RemoteCallsMade`
+- `PreMatchOddsReferences`
+- `LiveOddsReferences`
+
+### 28.6 Database Apply
+
+No new migration and no new SQL script are required for Stage 9.

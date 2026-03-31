@@ -42,10 +42,14 @@ public class BookmakersController : ControllerBase
 
         return Ok(new
         {
-            Message = "Bookmakers synced successfully.",
+            Message = "Bookmakers refreshed from local odds cache successfully.",
             LeagueId = leagueId,
             Season = season,
             LastSyncedAtUtc = syncedAtUtc,
+            result.Source,
+            result.RemoteCallsMade,
+            result.PreMatchOddsReferences,
+            result.LiveOddsReferences,
             result.Processed,
             result.Inserted,
             result.Updated

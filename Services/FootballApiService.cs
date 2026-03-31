@@ -3,17 +3,32 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
+using Microsoft.Extensions.Options;
+
 namespace SmartBets.Services;
 
 public class FootballApiService
 {
+    private static readonly SemaphoreSlim RequestGate = new(1, 1);
+
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly IOptionsMonitor<ApiFootballClientOptions> _optionsMonitor;
+    private readonly ApiFootballQuotaTelemetryService _quotaTelemetryService;
+    private readonly ILogger<FootballApiService> _logger;
 
-    public FootballApiService(HttpClient httpClient, IConfiguration configuration)
+    public FootballApiService(
+        HttpClient httpClient,
+        IConfiguration configuration,
+        IOptionsMonitor<ApiFootballClientOptions> optionsMonitor,
+        ApiFootballQuotaTelemetryService quotaTelemetryService,
+        ILogger<FootballApiService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _optionsMonitor = optionsMonitor;
+        _quotaTelemetryService = quotaTelemetryService;
+        _logger = logger;
     }
 
     public async Task<List<ApiFootballCountryItem>> GetCountriesAsync(CancellationToken cancellationToken = default)
@@ -31,12 +46,9 @@ public class FootballApiService
         request.Headers.Add("x-apisports-key", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
 
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        Console.WriteLine($"[API-FOOTBALL] Countries status: {(int)response.StatusCode} {response.StatusCode}");
-        Console.WriteLine($"[API-FOOTBALL] Countries raw response: {raw}");
 
         response.EnsureSuccessStatusCode();
 
@@ -46,8 +58,6 @@ public class FootballApiService
             {
                 PropertyNameCaseInsensitive = true
             });
-
-        Console.WriteLine($"[API-FOOTBALL] Countries parsed count: {result?.Response?.Count ?? 0}");
 
         return result?.Response ?? new List<ApiFootballCountryItem>();
     }
@@ -68,7 +78,7 @@ public class FootballApiService
         request.Headers.Add("x-apisports-key", apiKey);
         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
 
         if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
@@ -104,7 +114,7 @@ public class FootballApiService
         request.Headers.Add("x-apisports-key", apiKey);
         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -136,7 +146,7 @@ public class FootballApiService
         request.Headers.Add("x-apisports-key", apiKey);
         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
 
         if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
@@ -174,7 +184,7 @@ public class FootballApiService
         request.Headers.Add("x-apisports-key", apiKey);
         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
 
         if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
@@ -218,7 +228,7 @@ public class FootballApiService
             request.Headers.Add("x-apisports-key", apiKey);
             request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
             {
@@ -269,7 +279,7 @@ public class FootballApiService
         request.Headers.Add("x-apisports-key", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
@@ -520,7 +530,7 @@ public class FootballApiService
         request.Headers.Add("x-apisports-key", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
@@ -538,5 +548,50 @@ public class FootballApiService
                 PropertyNameCaseInsensitive = true
             },
             cancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> SendAsyncWithQuotaAwarenessAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        await RequestGate.WaitAsync(cancellationToken);
+
+        try
+        {
+            var options = _optionsMonitor.CurrentValue;
+            var preRequestDelay = _quotaTelemetryService.GetPreRequestDelay(options);
+
+            if (preRequestDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(preRequestDelay, cancellationToken);
+            }
+
+            _quotaTelemetryService.MarkRequestStarted();
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            _quotaTelemetryService.Record(response.Headers);
+
+            var snapshot = _quotaTelemetryService.GetSnapshot(options);
+            if (snapshot.Mode == ApiFootballQuotaMode.Critical)
+            {
+                _logger.LogWarning(
+                    "API-Football quota is in CRITICAL mode. DailyRemaining={DailyRemaining}, MinuteRemaining={MinuteRemaining}",
+                    snapshot.RequestsDailyRemaining,
+                    snapshot.RequestsMinuteRemaining);
+            }
+            else if (snapshot.Mode == ApiFootballQuotaMode.Low)
+            {
+                _logger.LogInformation(
+                    "API-Football quota is in LOW mode. DailyRemaining={DailyRemaining}, MinuteRemaining={MinuteRemaining}",
+                    snapshot.RequestsDailyRemaining,
+                    snapshot.RequestsMinuteRemaining);
+            }
+
+            return response;
+        }
+        finally
+        {
+            RequestGate.Release();
+        }
     }
 }

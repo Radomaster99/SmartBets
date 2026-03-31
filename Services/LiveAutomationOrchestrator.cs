@@ -13,6 +13,8 @@ public class LiveAutomationOrchestrator
     private readonly LiveOddsService _liveOddsService;
     private readonly IConfiguration _configuration;
     private readonly IOptionsMonitor<LiveAutomationOptions> _optionsMonitor;
+    private readonly IOptionsMonitor<ApiFootballClientOptions> _apiFootballClientOptions;
+    private readonly ApiFootballQuotaTelemetryService _quotaTelemetryService;
     private readonly ILogger<LiveAutomationOrchestrator> _logger;
 
     public LiveAutomationOrchestrator(
@@ -22,6 +24,8 @@ public class LiveAutomationOrchestrator
         LiveOddsService liveOddsService,
         IConfiguration configuration,
         IOptionsMonitor<LiveAutomationOptions> optionsMonitor,
+        IOptionsMonitor<ApiFootballClientOptions> apiFootballClientOptions,
+        ApiFootballQuotaTelemetryService quotaTelemetryService,
         ILogger<LiveAutomationOrchestrator> logger)
     {
         _dbContext = dbContext;
@@ -30,6 +34,8 @@ public class LiveAutomationOrchestrator
         _liveOddsService = liveOddsService;
         _configuration = configuration;
         _optionsMonitor = optionsMonitor;
+        _apiFootballClientOptions = apiFootballClientOptions;
+        _quotaTelemetryService = quotaTelemetryService;
         _logger = logger;
     }
 
@@ -75,6 +81,15 @@ public class LiveAutomationOrchestrator
 
         var actions = new List<string>();
         var nowUtc = DateTime.UtcNow;
+        var quotaSnapshot = _quotaTelemetryService.GetSnapshot(_apiFootballClientOptions.CurrentValue);
+        var allowPlayers = quotaSnapshot.Mode == ApiFootballQuotaMode.Normal;
+        var allowLiveOdds = quotaSnapshot.Mode == ApiFootballQuotaMode.Normal;
+        var maxMatchCenterFixtures = quotaSnapshot.Mode switch
+        {
+            ApiFootballQuotaMode.Critical => Math.Min(2, options.GetMaxMatchCenterFixtures()),
+            ApiFootballQuotaMode.Low => Math.Min(4, options.GetMaxMatchCenterFixtures()),
+            _ => options.GetMaxMatchCenterFixtures()
+        };
 
         if (IsDue(state.LastLiveStatusRunUtc, nowUtc, options.GetLiveStatusInterval()))
         {
@@ -90,13 +105,14 @@ public class LiveAutomationOrchestrator
         if ((snapshot.LiveFixturesCount > 0 || snapshot.PendingPostFinishFixturesCount > 0) &&
             IsDue(state.LastMatchCenterRunUtc, nowUtc, options.GetMatchCenterInterval()))
         {
-            var includePlayers = options.IncludePlayersAutomation &&
+            var includePlayers = allowPlayers &&
+                                 options.IncludePlayersAutomation &&
                                  snapshot.LiveFixturesCount > 0 &&
                                  snapshot.LiveFixturesCount <= options.GetMaxFixturesForPlayers() &&
                                  IsDue(state.LastPlayersRunUtc, nowUtc, options.GetPlayersInterval());
 
             var matchCenterResult = await _fixtureMatchCenterSyncService.SyncLiveFixturesAsync(
-                maxFixtures: options.GetMaxMatchCenterFixtures(),
+                maxFixtures: maxMatchCenterFixtures,
                 includePlayers: includePlayers,
                 force: false,
                 cancellationToken: cancellationToken);
@@ -116,13 +132,17 @@ public class LiveAutomationOrchestrator
             }
         }
 
-        if (options.EnableLiveOddsAutoSync && snapshot.LiveLeagueApiIds.Count > 0)
+        if (options.EnableLiveOddsAutoSync && allowLiveOdds && snapshot.LiveLeagueApiIds.Count > 0)
         {
             var syncedLeagues = await SyncLiveOddsIfDueAsync(snapshot, state, options, cancellationToken);
             if (syncedLeagues.Count > 0)
             {
                 actions.Add($"live-odds:{string.Join(',', syncedLeagues)}");
             }
+        }
+        else if (options.EnableLiveOddsAutoSync && !allowLiveOdds)
+        {
+            actions.Add("live-odds:quota_guard");
         }
 
         if (actions.Count > 0)

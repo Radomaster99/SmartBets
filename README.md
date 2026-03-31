@@ -107,3 +107,14 @@ Stage 8 internal live automation:
   - players only every 180s and only when live fixture count is small
 - live odds auto-sync is intentionally opt-in and disabled by default in config
 - no new database migration is required for Stage 8
+
+Stage 9 production hardening:
+- runtime API-Football quota telemetry is exposed through `GET /api/sync-status`
+- outbound API-Football calls now use minimum spacing plus low/critical quota backoff
+- live automation suppresses expensive refreshes first when quota is tight
+- `POST /api/bookmakers/sync` now refreshes from the local odds cache instead of re-downloading the heavy odds catalog
+- new retention worker trims old `sync_errors`, `live_odds`, `pre_match_odds` and derived odds analytics rows
+- new config sections:
+  - `ApiFootballClient`
+  - `DataRetention`
+- no new database migration is required for Stage 9
