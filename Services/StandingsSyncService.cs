@@ -66,15 +66,17 @@ public class StandingsSyncService
                 if (existing.Status != item.Status) { existing.Status = item.Status; isChanged = true; }
                 if (existing.Description != item.Description) { existing.Description = item.Description; isChanged = true; }
 
-                if (existing.Played != item.All.Played) { existing.Played = item.All.Played; isChanged = true; }
-                if (existing.Win != item.All.Win) { existing.Win = item.All.Win; isChanged = true; }
-                if (existing.Draw != item.All.Draw) { existing.Draw = item.All.Draw; isChanged = true; }
-                if (existing.Lose != item.All.Lose) { existing.Lose = item.All.Lose; isChanged = true; }
-                if (existing.GoalsFor != item.All.Goals.For) { existing.GoalsFor = item.All.Goals.For; isChanged = true; }
-                if (existing.GoalsAgainst != item.All.Goals.Against) { existing.GoalsAgainst = item.All.Goals.Against; isChanged = true; }
+                if (existing.Played != item.Stats.Played) { existing.Played = item.Stats.Played; isChanged = true; }
+                if (existing.Win != item.Stats.Win) { existing.Win = item.Stats.Win; isChanged = true; }
+                if (existing.Draw != item.Stats.Draw) { existing.Draw = item.Stats.Draw; isChanged = true; }
+                if (existing.Lose != item.Stats.Lose) { existing.Lose = item.Stats.Lose; isChanged = true; }
+                if (existing.GoalsFor != item.Stats.Goals.GoalsFor) { existing.GoalsFor = item.Stats.Goals.GoalsFor; isChanged = true; }
+                if (existing.GoalsAgainst != item.Stats.Goals.GoalsAgainst) { existing.GoalsAgainst = item.Stats.Goals.GoalsAgainst; isChanged = true; }
 
                 if (isChanged)
+                {
                     result.Updated++;
+                }
             }
             else
             {
@@ -90,12 +92,12 @@ public class StandingsSyncService
                     Form = item.Form,
                     Status = item.Status,
                     Description = item.Description,
-                    Played = item.All.Played,
-                    Win = item.All.Win,
-                    Draw = item.All.Draw,
-                    Lose = item.All.Lose,
-                    GoalsFor = item.All.Goals.For,
-                    GoalsAgainst = item.All.Goals.Against
+                    Played = item.Stats.Played,
+                    Win = item.Stats.Win,
+                    Draw = item.Stats.Draw,
+                    Lose = item.Stats.Lose,
+                    GoalsFor = item.Stats.Goals.GoalsFor,
+                    GoalsAgainst = item.Stats.Goals.GoalsAgainst
                 };
 
                 _dbContext.Standings.Add(newStanding);

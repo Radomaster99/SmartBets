@@ -56,7 +56,7 @@ public class ApiFootballStandingItem
     public string? Description { get; set; }
 
     [JsonPropertyName("all")]
-    public ApiFootballStandingAllStats All { get; set; } = new();
+    public ApiFootballStandingStats Stats { get; set; } = new();
 }
 
 public class ApiFootballStandingTeam
@@ -71,7 +71,7 @@ public class ApiFootballStandingTeam
     public string? Logo { get; set; }
 }
 
-public class ApiFootballStandingAllStats
+public class ApiFootballStandingStats
 {
     [JsonPropertyName("played")]
     public int Played { get; set; }
@@ -92,8 +92,8 @@ public class ApiFootballStandingAllStats
 public class ApiFootballStandingGoals
 {
     [JsonPropertyName("for")]
-    public int For { get; set; }
+    public int GoalsFor { get; set; }
 
     [JsonPropertyName("against")]
-    public int Against { get; set; }
+    public int GoalsAgainst { get; set; }
 }

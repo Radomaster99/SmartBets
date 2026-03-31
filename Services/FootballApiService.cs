@@ -51,6 +51,50 @@ public class FootballApiService
 
         return result?.Response ?? new List<ApiFootballCountryItem>();
     }
+    public async Task<List<ApiFootballStandingItem>> GetStandingsAsync(long leagueId, int season, CancellationToken cancellationToken = default)
+    {
+        var baseUrl = _configuration["ApiFootball:BaseUrl"];
+        var apiKey = _configuration["ApiFootball:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new InvalidOperationException("ApiFootball:BaseUrl is missing.");
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("ApiFootball:ApiKey is missing.");
+
+        var url = $"{baseUrl.TrimEnd('/')}/standings?league={leagueId}&season={season}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("x-apisports-key", apiKey);
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            throw new InvalidOperationException("API-Football rate limit reached. Try again later.");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        var result = await System.Text.Json.JsonSerializer.DeserializeAsync<ApiFootballStandingsResponse>(
+            stream,
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            },
+            cancellationToken);
+
+        if (result?.Response == null || result.Response.Count == 0)
+            return new List<ApiFootballStandingItem>();
+
+        return result.Response
+            .SelectMany(x => x.League.Standings)
+            .SelectMany(x => x)
+            .ToList();
+    }
     public async Task<List<ApiFootballLeagueItem>> GetLeaguesAsync(CancellationToken cancellationToken = default)
     {
         var baseUrl = _configuration["ApiFootball:BaseUrl"];
