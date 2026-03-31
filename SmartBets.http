@@ -29,6 +29,10 @@ X-API-KEY: {{ApiKey}}
 POST {{SmartBets_HostAddress}}/api/odds/sync?leagueId=39&season=2025&marketName=Match%20Winner
 X-API-KEY: {{ApiKey}}
 
+### Rebuild odds analytics from local snapshots only
+POST {{SmartBets_HostAddress}}/api/odds/analytics/rebuild?leagueId=39&season=2025&marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+
 ### Standings sync for one league-season
 POST {{SmartBets_HostAddress}}/api/standings/sync?leagueId=39&season=2025
 X-API-KEY: {{ApiKey}}
@@ -53,6 +57,119 @@ GET {{SmartBets_HostAddress}}/api/fixtures/123456?marketName=Match%20Winner
 X-API-KEY: {{ApiKey}}
 Accept: application/json
 
+### Match-center sync for one fixture
+POST {{SmartBets_HostAddress}}/api/fixtures/123456/sync-match-center?includePlayers=true&force=false
+X-API-KEY: {{ApiKey}}
+
+### Live match-center sync batch
+POST {{SmartBets_HostAddress}}/api/fixtures/sync-live-match-center?leagueId=39&season=2025&maxFixtures=10&includePlayers=false&force=false
+X-API-KEY: {{ApiKey}}
+
+### Preview sync for one fixture
+POST {{SmartBets_HostAddress}}/api/fixtures/123456/sync-preview?force=false
+X-API-KEY: {{ApiKey}}
+
+### Upcoming preview sync batch
+POST {{SmartBets_HostAddress}}/api/fixtures/sync-upcoming-previews?leagueId=39&season=2025&windowHours=24&maxFixtures=10&force=false
+X-API-KEY: {{ApiKey}}
+
+### Fixture events
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/events
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Fixture statistics
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/statistics
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Fixture lineups
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/lineups
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Fixture player statistics
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/players
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Aggregated match-center
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/match-center?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Fixture predictions
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/predictions
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Fixture injuries
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/injuries
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Fixture head-to-head
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/head-to-head
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Aggregated fixture preview
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/preview?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Team statistics sync for one league-season
+POST {{SmartBets_HostAddress}}/api/teams/statistics/sync?leagueId=39&season=2025&maxTeams=20&force=false
+X-API-KEY: {{ApiKey}}
+
+### Team statistics by API team id
+GET {{SmartBets_HostAddress}}/api/teams/33/statistics?leagueId=39&season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Team recent form by API team id
+GET {{SmartBets_HostAddress}}/api/teams/33/form?leagueId=39&season=2025&last=5
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### League analytics sync for one league-season
+POST {{SmartBets_HostAddress}}/api/leagues/39/analytics/sync?season=2025&force=false
+X-API-KEY: {{ApiKey}}
+
+### Supported leagues analytics sync batch
+POST {{SmartBets_HostAddress}}/api/leagues/analytics/sync?season=2025&activeOnly=true&maxLeagues=5&force=false
+X-API-KEY: {{ApiKey}}
+
+### League rounds
+GET {{SmartBets_HostAddress}}/api/leagues/39/rounds?season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### League current round
+GET {{SmartBets_HostAddress}}/api/leagues/39/current-round?season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### League top scorers
+GET {{SmartBets_HostAddress}}/api/leagues/39/top-scorers?season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### League top assists
+GET {{SmartBets_HostAddress}}/api/leagues/39/top-assists?season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### League top cards
+GET {{SmartBets_HostAddress}}/api/leagues/39/top-cards?season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### League dashboard
+GET {{SmartBets_HostAddress}}/api/leagues/39/dashboard?season=2025
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
 ### Latest fixture odds by API fixture id
 GET {{SmartBets_HostAddress}}/api/fixtures/123456/odds?marketName=Match%20Winner&latestOnly=true
 X-API-KEY: {{ApiKey}}
@@ -60,6 +177,26 @@ Accept: application/json
 
 ### Best fixture odds by API fixture id
 GET {{SmartBets_HostAddress}}/api/fixtures/123456/best-odds?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Odds history by API fixture id
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/odds/history?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Odds movement analytics by API fixture id
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/odds/movement?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Market consensus by API fixture id
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/odds/consensus?marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Value signals by API fixture id
+GET {{SmartBets_HostAddress}}/api/fixtures/123456/odds/value-signals?marketName=Match%20Winner
 X-API-KEY: {{ApiKey}}
 Accept: application/json
 

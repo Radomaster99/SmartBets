@@ -11,15 +11,18 @@ namespace SmartBets.Controllers;
 public class LeaguesController : ControllerBase
 {
     private readonly LeagueSyncService _syncService;
+    private readonly LeagueAnalyticsService _leagueAnalyticsService;
     private readonly AppDbContext _dbContext;
     private readonly SyncStateService _syncStateService;
 
     public LeaguesController(
         LeagueSyncService syncService,
+        LeagueAnalyticsService leagueAnalyticsService,
         AppDbContext dbContext,
         SyncStateService syncStateService)
     {
         _syncService = syncService;
+        _leagueAnalyticsService = leagueAnalyticsService;
         _dbContext = dbContext;
         _syncStateService = syncStateService;
     }
@@ -74,5 +77,162 @@ public class LeaguesController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(leagues);
+    }
+
+    [HttpPost("{apiLeagueId:long}/analytics/sync")]
+    public async Task<IActionResult> SyncAnalytics(
+        long apiLeagueId,
+        [FromQuery] int season,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var result = await _leagueAnalyticsService.SyncLeagueAnalyticsAsync(
+            apiLeagueId,
+            season,
+            force,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("analytics/sync")]
+    public async Task<IActionResult> SyncSupportedLeagueAnalytics(
+        [FromQuery] int? season,
+        [FromQuery] bool activeOnly = true,
+        [FromQuery] int maxLeagues = 10,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (maxLeagues <= 0)
+            return BadRequest("maxLeagues must be greater than 0.");
+
+        var result = await _leagueAnalyticsService.SyncSupportedLeaguesAsync(
+            season,
+            activeOnly,
+            maxLeagues,
+            force,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpGet("{apiLeagueId:long}/rounds")]
+    public async Task<IActionResult> GetRounds(
+        long apiLeagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken = default)
+    {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var leagueExists = await _dbContext.Leagues
+            .AsNoTracking()
+            .AnyAsync(x => x.ApiLeagueId == apiLeagueId && x.Season == season, cancellationToken);
+
+        if (!leagueExists)
+            return NotFound($"League {apiLeagueId} season {season} was not found.");
+
+        var rounds = await _leagueAnalyticsService.GetRoundsAsync(apiLeagueId, season, cancellationToken);
+        return Ok(rounds);
+    }
+
+    [HttpGet("{apiLeagueId:long}/current-round")]
+    public async Task<IActionResult> GetCurrentRound(
+        long apiLeagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken = default)
+    {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var leagueExists = await _dbContext.Leagues
+            .AsNoTracking()
+            .AnyAsync(x => x.ApiLeagueId == apiLeagueId && x.Season == season, cancellationToken);
+
+        if (!leagueExists)
+            return NotFound($"League {apiLeagueId} season {season} was not found.");
+
+        var round = await _leagueAnalyticsService.GetCurrentRoundAsync(apiLeagueId, season, cancellationToken);
+        return round is null
+            ? NotFound($"No current round is stored for league {apiLeagueId}, season {season}.")
+            : Ok(round);
+    }
+
+    [HttpGet("{apiLeagueId:long}/top-scorers")]
+    public async Task<IActionResult> GetTopScorers(
+        long apiLeagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken = default)
+    {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var leagueExists = await _dbContext.Leagues
+            .AsNoTracking()
+            .AnyAsync(x => x.ApiLeagueId == apiLeagueId && x.Season == season, cancellationToken);
+
+        if (!leagueExists)
+            return NotFound($"League {apiLeagueId} season {season} was not found.");
+
+        var scorers = await _leagueAnalyticsService.GetTopScorersAsync(apiLeagueId, season, cancellationToken);
+        return Ok(scorers);
+    }
+
+    [HttpGet("{apiLeagueId:long}/top-assists")]
+    public async Task<IActionResult> GetTopAssists(
+        long apiLeagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken = default)
+    {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var leagueExists = await _dbContext.Leagues
+            .AsNoTracking()
+            .AnyAsync(x => x.ApiLeagueId == apiLeagueId && x.Season == season, cancellationToken);
+
+        if (!leagueExists)
+            return NotFound($"League {apiLeagueId} season {season} was not found.");
+
+        var assists = await _leagueAnalyticsService.GetTopAssistsAsync(apiLeagueId, season, cancellationToken);
+        return Ok(assists);
+    }
+
+    [HttpGet("{apiLeagueId:long}/top-cards")]
+    public async Task<IActionResult> GetTopCards(
+        long apiLeagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken = default)
+    {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var leagueExists = await _dbContext.Leagues
+            .AsNoTracking()
+            .AnyAsync(x => x.ApiLeagueId == apiLeagueId && x.Season == season, cancellationToken);
+
+        if (!leagueExists)
+            return NotFound($"League {apiLeagueId} season {season} was not found.");
+
+        var cards = await _leagueAnalyticsService.GetTopCardsAsync(apiLeagueId, season, cancellationToken);
+        return Ok(cards);
+    }
+
+    [HttpGet("{apiLeagueId:long}/dashboard")]
+    public async Task<IActionResult> GetDashboard(
+        long apiLeagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken = default)
+    {
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var dashboard = await _leagueAnalyticsService.GetDashboardAsync(apiLeagueId, season, cancellationToken);
+        return dashboard is null
+            ? NotFound($"League {apiLeagueId} season {season} was not found.")
+            : Ok(dashboard);
     }
 }

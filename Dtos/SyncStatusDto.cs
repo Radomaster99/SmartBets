@@ -24,7 +24,19 @@ public class LeagueSyncStatusItemDto
     public DateTime? TeamsLastSyncedAtUtc { get; set; }
     public DateTime? FixturesUpcomingLastSyncedAtUtc { get; set; }
     public DateTime? FixturesFullLastSyncedAtUtc { get; set; }
+    public DateTime? EventsLastSyncedAtUtc { get; set; }
+    public DateTime? StatisticsLastSyncedAtUtc { get; set; }
+    public DateTime? LineupsLastSyncedAtUtc { get; set; }
+    public DateTime? PlayerStatisticsLastSyncedAtUtc { get; set; }
+    public DateTime? PredictionsLastSyncedAtUtc { get; set; }
+    public DateTime? InjuriesLastSyncedAtUtc { get; set; }
+    public DateTime? TeamStatisticsLastSyncedAtUtc { get; set; }
+    public DateTime? RoundsLastSyncedAtUtc { get; set; }
+    public DateTime? TopScorersLastSyncedAtUtc { get; set; }
+    public DateTime? TopAssistsLastSyncedAtUtc { get; set; }
+    public DateTime? TopCardsLastSyncedAtUtc { get; set; }
     public DateTime? StandingsLastSyncedAtUtc { get; set; }
     public DateTime? OddsLastSyncedAtUtc { get; set; }
+    public DateTime? OddsAnalyticsLastSyncedAtUtc { get; set; }
     public DateTime? BookmakersLastSyncedAtUtc { get; set; }
 }

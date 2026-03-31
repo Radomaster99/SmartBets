@@ -59,11 +59,20 @@ builder.Services.AddHttpClient<FootballApiService>();
 // Services
 builder.Services.AddScoped<CountrySyncService>();
 builder.Services.AddScoped<LeagueSyncService>();
+builder.Services.AddScoped<LeagueCoverageService>();
 builder.Services.AddScoped<TeamSyncService>();
 builder.Services.AddScoped<FixtureSyncService>();
+builder.Services.AddScoped<FixtureMatchCenterReadService>();
+builder.Services.AddScoped<FixtureMatchCenterSyncService>();
+builder.Services.AddScoped<FixturePreviewReadService>();
+builder.Services.AddScoped<FixturePreviewSyncService>();
+builder.Services.AddScoped<TeamAnalyticsService>();
+builder.Services.AddScoped<LeagueAnalyticsService>();
 builder.Services.AddScoped<BookmakerSyncService>();
 builder.Services.AddScoped<PreMatchOddsService>();
+builder.Services.AddScoped<OddsAnalyticsService>();
 builder.Services.AddScoped<DiscoveryService>();
+builder.Services.AddScoped<SyncErrorService>();
 builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
 builder.Services.AddScoped<StandingsSyncService>();
@@ -104,6 +113,19 @@ app.UseExceptionHandler(errorApp =>
         var ex = exceptionHandlerPathFeature?.Error;
 
         logger.LogError(ex, "Unhandled exception occurred while processing request {Path}", context.Request.Path);
+
+        if (ex is not null)
+        {
+            try
+            {
+                var syncErrorService = context.RequestServices.GetRequiredService<SyncErrorService>();
+                await syncErrorService.TryRecordRequestFailureAsync(context, ex, context.RequestAborted);
+            }
+            catch (Exception logEx)
+            {
+                logger.LogError(logEx, "Failed to persist sync error for request {Path}", context.Request.Path);
+            }
+        }
 
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/problem+json";

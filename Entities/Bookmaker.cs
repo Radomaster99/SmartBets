@@ -7,4 +7,6 @@ public class Bookmaker
     public string Name { get; set; } = string.Empty;
 
     public ICollection<PreMatchOdd> PreMatchOdds { get; set; } = new List<PreMatchOdd>();
+    public ICollection<OddsOpenClose> OddsOpenCloses { get; set; } = new List<OddsOpenClose>();
+    public ICollection<OddsMovement> OddsMovements { get; set; } = new List<OddsMovement>();
 }

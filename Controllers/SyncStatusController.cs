@@ -102,8 +102,20 @@ public class SyncStatusController : ControllerBase
                     TeamsLastSyncedAtUtc = GetLastSyncedAt("teams", x.LeagueApiId, x.Season),
                     FixturesUpcomingLastSyncedAtUtc = GetLastSyncedAt("fixtures_upcoming", x.LeagueApiId, x.Season),
                     FixturesFullLastSyncedAtUtc = GetLastSyncedAt("fixtures_full", x.LeagueApiId, x.Season),
+                    EventsLastSyncedAtUtc = GetLastSyncedAt("fixture_events", x.LeagueApiId, x.Season),
+                    StatisticsLastSyncedAtUtc = GetLastSyncedAt("fixture_statistics", x.LeagueApiId, x.Season),
+                    LineupsLastSyncedAtUtc = GetLastSyncedAt("fixture_lineups", x.LeagueApiId, x.Season),
+                    PlayerStatisticsLastSyncedAtUtc = GetLastSyncedAt("fixture_player_statistics", x.LeagueApiId, x.Season),
+                    PredictionsLastSyncedAtUtc = GetLastSyncedAt("fixture_predictions", x.LeagueApiId, x.Season),
+                    InjuriesLastSyncedAtUtc = GetLastSyncedAt("fixture_injuries", x.LeagueApiId, x.Season),
+                    TeamStatisticsLastSyncedAtUtc = GetLastSyncedAt("team_statistics", x.LeagueApiId, x.Season),
+                    RoundsLastSyncedAtUtc = GetLastSyncedAt("league_rounds", x.LeagueApiId, x.Season),
+                    TopScorersLastSyncedAtUtc = GetLastSyncedAt("league_top_scorers", x.LeagueApiId, x.Season),
+                    TopAssistsLastSyncedAtUtc = GetLastSyncedAt("league_top_assists", x.LeagueApiId, x.Season),
+                    TopCardsLastSyncedAtUtc = GetLastSyncedAt("league_top_cards", x.LeagueApiId, x.Season),
                     StandingsLastSyncedAtUtc = GetLastSyncedAt("standings", x.LeagueApiId, x.Season),
                     OddsLastSyncedAtUtc = GetLastSyncedAt("odds", x.LeagueApiId, x.Season),
+                    OddsAnalyticsLastSyncedAtUtc = GetLastSyncedAt("odds_analytics", x.LeagueApiId, x.Season),
                     BookmakersLastSyncedAtUtc = GetLastSyncedAt("bookmakers", x.LeagueApiId, x.Season)
                 };
             })

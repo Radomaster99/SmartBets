@@ -15,15 +15,22 @@ public class BookmakerSyncService
 {
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
+    private readonly LeagueCoverageService _leagueCoverageService;
 
-    public BookmakerSyncService(AppDbContext dbContext, FootballApiService apiService)
+    public BookmakerSyncService(
+        AppDbContext dbContext,
+        FootballApiService apiService,
+        LeagueCoverageService leagueCoverageService)
     {
         _dbContext = dbContext;
         _apiService = apiService;
+        _leagueCoverageService = leagueCoverageService;
     }
 
     public async Task<BookmakerSyncResult> SyncBookmakersAsync(long leagueId, int season, CancellationToken cancellationToken = default)
     {
+        await _leagueCoverageService.EnsureOddsSupportedAsync(leagueId, season, cancellationToken);
+
         var leagueExists = await _dbContext.Leagues
             .AnyAsync(x => x.ApiLeagueId == leagueId && x.Season == season, cancellationToken);
 

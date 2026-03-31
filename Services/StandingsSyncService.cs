@@ -16,15 +16,22 @@ public class StandingsSyncService
 {
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
+    private readonly LeagueCoverageService _leagueCoverageService;
 
-    public StandingsSyncService(AppDbContext dbContext, FootballApiService apiService)
+    public StandingsSyncService(
+        AppDbContext dbContext,
+        FootballApiService apiService,
+        LeagueCoverageService leagueCoverageService)
     {
         _dbContext = dbContext;
         _apiService = apiService;
+        _leagueCoverageService = leagueCoverageService;
     }
 
     public async Task<StandingsSyncResult> SyncStandingsAsync(long leagueId, int season, CancellationToken cancellationToken = default)
     {
+        await _leagueCoverageService.EnsureStandingsSupportedAsync(leagueId, season, cancellationToken);
+
         var league = await _dbContext.Leagues
             .FirstOrDefaultAsync(x => x.ApiLeagueId == leagueId && x.Season == season, cancellationToken);
 

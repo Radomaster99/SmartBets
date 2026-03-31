@@ -1,7 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Entities;
-using SmartBets.Models.ApiFootball;
 
 namespace SmartBets.Services;
 
@@ -17,15 +16,22 @@ public class FixtureSyncService
 {
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
+    private readonly LeagueCoverageService _leagueCoverageService;
 
-    public FixtureSyncService(AppDbContext dbContext, FootballApiService apiService)
+    public FixtureSyncService(
+        AppDbContext dbContext,
+        FootballApiService apiService,
+        LeagueCoverageService leagueCoverageService)
     {
         _dbContext = dbContext;
         _apiService = apiService;
+        _leagueCoverageService = leagueCoverageService;
     }
 
     public async Task<FixtureSyncResult> SyncFixturesAsync(long leagueId, int season, CancellationToken cancellationToken = default)
     {
+        await _leagueCoverageService.EnsureFixturesSupportedAsync(leagueId, season, cancellationToken);
+
         var league = await _dbContext.Leagues
             .FirstOrDefaultAsync(x => x.ApiLeagueId == leagueId && x.Season == season, cancellationToken);
 
@@ -154,6 +160,8 @@ public class FixtureSyncService
 
     public async Task<FixtureSyncResult> SyncUpcomingFixturesAsync(long leagueId, int season, CancellationToken cancellationToken = default)
     {
+        await _leagueCoverageService.EnsureFixturesSupportedAsync(leagueId, season, cancellationToken);
+
         var league = await _dbContext.Leagues
             .FirstOrDefaultAsync(x => x.ApiLeagueId == leagueId && x.Season == season, cancellationToken);
 
@@ -279,6 +287,7 @@ public class FixtureSyncService
 
         return result;
     }
+
     private static DateTime EnsureUtc(DateTime value)
     {
         return value.Kind switch

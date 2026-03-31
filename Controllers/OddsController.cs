@@ -8,13 +8,16 @@ namespace SmartBets.Controllers;
 public class OddsController : ControllerBase
 {
     private readonly PreMatchOddsService _preMatchOddsService;
+    private readonly OddsAnalyticsService _oddsAnalyticsService;
     private readonly SyncStateService _syncStateService;
 
     public OddsController(
         PreMatchOddsService preMatchOddsService,
+        OddsAnalyticsService oddsAnalyticsService,
         SyncStateService syncStateService)
     {
         _preMatchOddsService = preMatchOddsService;
+        _oddsAnalyticsService = oddsAnalyticsService;
         _syncStateService = syncStateService;
     }
 
@@ -64,6 +67,39 @@ public class OddsController : ControllerBase
             result.SnapshotsSkippedUnchanged,
             result.SnapshotsSkippedUnsupportedMarket
         });
+    }
+
+    [HttpPost("analytics/rebuild")]
+    public async Task<IActionResult> RebuildAnalytics(
+        [FromQuery] long? leagueId,
+        [FromQuery] int? season,
+        [FromQuery] long? apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
+    {
+        if (!apiFixtureId.HasValue && (!leagueId.HasValue || !season.HasValue))
+        {
+            return BadRequest("Provide apiFixtureId or leagueId + season.");
+        }
+
+        var result = await _oddsAnalyticsService.RebuildAnalyticsAsync(
+            leagueId,
+            season,
+            apiFixtureId,
+            marketName,
+            cancellationToken);
+
+        if (leagueId.HasValue && season.HasValue)
+        {
+            await _syncStateService.SetLastSyncedAtAsync(
+                "odds_analytics",
+                leagueId.Value,
+                season.Value,
+                result.ExecutedAtUtc,
+                cancellationToken);
+        }
+
+        return Ok(result);
     }
 
     [HttpGet]

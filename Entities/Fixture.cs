@@ -12,9 +12,25 @@ public class Fixture
     public long AwayTeamId { get; set; }
     public int? HomeGoals { get; set; }
     public int? AwayGoals { get; set; }
+    public DateTime? LastEventSyncedAtUtc { get; set; }
+    public DateTime? LastStatisticsSyncedAtUtc { get; set; }
+    public DateTime? LastLineupsSyncedAtUtc { get; set; }
+    public DateTime? LastPlayerStatisticsSyncedAtUtc { get; set; }
+    public DateTime? LastPredictionSyncedAtUtc { get; set; }
+    public DateTime? LastInjuriesSyncedAtUtc { get; set; }
+    public int PostFinishMatchCenterSyncCount { get; set; }
 
     public League League { get; set; } = null!;
     public Team HomeTeam { get; set; } = null!;
     public Team AwayTeam { get; set; } = null!;
     public ICollection<PreMatchOdd> PreMatchOdds { get; set; } = new List<PreMatchOdd>();
+    public ICollection<OddsOpenClose> OddsOpenCloses { get; set; } = new List<OddsOpenClose>();
+    public ICollection<OddsMovement> OddsMovements { get; set; } = new List<OddsMovement>();
+    public ICollection<MarketConsensus> MarketConsensuses { get; set; } = new List<MarketConsensus>();
+    public ICollection<FixtureEvent> Events { get; set; } = new List<FixtureEvent>();
+    public ICollection<FixtureLineup> Lineups { get; set; } = new List<FixtureLineup>();
+    public ICollection<FixtureStatistic> Statistics { get; set; } = new List<FixtureStatistic>();
+    public ICollection<FixturePlayerStatistic> PlayerStatistics { get; set; } = new List<FixturePlayerStatistic>();
+    public ICollection<FixturePrediction> Predictions { get; set; } = new List<FixturePrediction>();
+    public ICollection<FixtureInjury> Injuries { get; set; } = new List<FixtureInjury>();
 }

@@ -13,18 +13,33 @@ namespace SmartBets.Controllers;
 public class FixturesController : ControllerBase
 {
     private readonly FixtureSyncService _fixtureSyncService;
+    private readonly FixtureMatchCenterReadService _fixtureMatchCenterReadService;
+    private readonly FixtureMatchCenterSyncService _fixtureMatchCenterSyncService;
+    private readonly FixturePreviewReadService _fixturePreviewReadService;
+    private readonly FixturePreviewSyncService _fixturePreviewSyncService;
     private readonly PreMatchOddsService _preMatchOddsService;
+    private readonly OddsAnalyticsService _oddsAnalyticsService;
     private readonly AppDbContext _dbContext;
     private readonly SyncStateService _syncStateService;
 
     public FixturesController(
         FixtureSyncService fixtureSyncService,
+        FixtureMatchCenterReadService fixtureMatchCenterReadService,
+        FixtureMatchCenterSyncService fixtureMatchCenterSyncService,
+        FixturePreviewReadService fixturePreviewReadService,
+        FixturePreviewSyncService fixturePreviewSyncService,
         PreMatchOddsService preMatchOddsService,
+        OddsAnalyticsService oddsAnalyticsService,
         AppDbContext dbContext,
         SyncStateService syncStateService)
     {
         _fixtureSyncService = fixtureSyncService ?? throw new ArgumentNullException(nameof(fixtureSyncService));
+        _fixtureMatchCenterReadService = fixtureMatchCenterReadService ?? throw new ArgumentNullException(nameof(fixtureMatchCenterReadService));
+        _fixtureMatchCenterSyncService = fixtureMatchCenterSyncService ?? throw new ArgumentNullException(nameof(fixtureMatchCenterSyncService));
+        _fixturePreviewReadService = fixturePreviewReadService ?? throw new ArgumentNullException(nameof(fixturePreviewReadService));
+        _fixturePreviewSyncService = fixturePreviewSyncService ?? throw new ArgumentNullException(nameof(fixturePreviewSyncService));
         _preMatchOddsService = preMatchOddsService ?? throw new ArgumentNullException(nameof(preMatchOddsService));
+        _oddsAnalyticsService = oddsAnalyticsService ?? throw new ArgumentNullException(nameof(oddsAnalyticsService));
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _syncStateService = syncStateService ?? throw new ArgumentNullException(nameof(syncStateService));
     }
@@ -146,6 +161,76 @@ public class FixturesController : ControllerBase
         });
     }
 
+    [HttpPost("{apiFixtureId:long}/sync-match-center")]
+    public async Task<IActionResult> SyncMatchCenter(
+        long apiFixtureId,
+        [FromQuery] bool includePlayers = true,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _fixtureMatchCenterSyncService.SyncFixtureAsync(
+            apiFixtureId,
+            includePlayers,
+            force,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("sync-live-match-center")]
+    public async Task<IActionResult> SyncLiveMatchCenter(
+        [FromQuery] long? leagueId,
+        [FromQuery] int? season,
+        [FromQuery] int maxFixtures = 10,
+        [FromQuery] bool includePlayers = false,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _fixtureMatchCenterSyncService.SyncLiveFixturesAsync(
+            leagueId,
+            season,
+            maxFixtures,
+            includePlayers,
+            force,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("{apiFixtureId:long}/sync-preview")]
+    public async Task<IActionResult> SyncPreview(
+        long apiFixtureId,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _fixturePreviewSyncService.SyncFixtureAsync(
+            apiFixtureId,
+            force,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("sync-upcoming-previews")]
+    public async Task<IActionResult> SyncUpcomingPreviews(
+        [FromQuery] long? leagueId,
+        [FromQuery] int? season,
+        [FromQuery] int windowHours = 24,
+        [FromQuery] int maxFixtures = 10,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _fixturePreviewSyncService.SyncUpcomingFixturesAsync(
+            leagueId,
+            season,
+            windowHours,
+            maxFixtures,
+            force,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] long? leagueId,
@@ -225,13 +310,7 @@ public class FixturesController : ControllerBase
         [FromQuery] string? marketName,
         CancellationToken cancellationToken = default)
     {
-        var fixture = await _dbContext.Fixtures
-            .AsNoTracking()
-            .Include(x => x.League)
-                .ThenInclude(x => x.Country)
-            .Include(x => x.HomeTeam)
-            .Include(x => x.AwayTeam)
-            .FirstOrDefaultAsync(x => x.ApiFixtureId == apiFixtureId, cancellationToken);
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
 
         if (fixture is null)
         {
@@ -241,42 +320,152 @@ public class FixturesController : ControllerBase
             });
         }
 
-        var syncStates = await _dbContext.SyncStates
-            .AsNoTracking()
-            .Where(x =>
-                x.LeagueApiId == fixture.League.ApiLeagueId &&
-                x.Season == fixture.Season &&
-                (x.EntityType == "fixtures_upcoming" ||
-                 x.EntityType == "fixtures_full" ||
-                 x.EntityType == "odds"))
-            .ToListAsync(cancellationToken);
+        return Ok(await BuildFixtureDetailAsync(fixture, marketName, cancellationToken));
+    }
 
-        DateTime? FindSyncValue(string entityType)
+    [HttpGet("{apiFixtureId:long}/events")]
+    public async Task<IActionResult> GetFixtureEvents(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var events = await _fixtureMatchCenterReadService.GetEventsAsync(fixture.Id, cancellationToken);
+        return Ok(events);
+    }
+
+    [HttpGet("{apiFixtureId:long}/statistics")]
+    public async Task<IActionResult> GetFixtureStatistics(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var statistics = await _fixtureMatchCenterReadService.GetStatisticsAsync(fixture.Id, cancellationToken);
+        return Ok(statistics);
+    }
+
+    [HttpGet("{apiFixtureId:long}/lineups")]
+    public async Task<IActionResult> GetFixtureLineups(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var lineups = await _fixtureMatchCenterReadService.GetLineupsAsync(fixture.Id, cancellationToken);
+        return Ok(lineups);
+    }
+
+    [HttpGet("{apiFixtureId:long}/players")]
+    public async Task<IActionResult> GetFixturePlayers(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var players = await _fixtureMatchCenterReadService.GetPlayersAsync(fixture.Id, cancellationToken);
+        return Ok(players);
+    }
+
+    [HttpGet("{apiFixtureId:long}/match-center")]
+    public async Task<IActionResult> GetMatchCenter(
+        long apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var detail = await BuildFixtureDetailAsync(fixture, marketName, cancellationToken);
+        var events = await _fixtureMatchCenterReadService.GetEventsAsync(fixture.Id, cancellationToken);
+        var statistics = await _fixtureMatchCenterReadService.GetStatisticsAsync(fixture.Id, cancellationToken);
+        var lineups = await _fixtureMatchCenterReadService.GetLineupsAsync(fixture.Id, cancellationToken);
+        var players = await _fixtureMatchCenterReadService.GetPlayersAsync(fixture.Id, cancellationToken);
+
+        return Ok(new FixtureMatchCenterDto
         {
-            return syncStates
-                .Where(x => x.EntityType == entityType)
-                .Select(x => (DateTime?)x.LastSyncedAt)
-                .OrderByDescending(x => x)
-                .FirstOrDefault();
-        }
+            Detail = detail,
+            Events = events,
+            Statistics = statistics,
+            Lineups = lineups,
+            Players = players
+        });
+    }
 
-        var detail = new FixtureDetailDto
+    [HttpGet("{apiFixtureId:long}/predictions")]
+    public async Task<IActionResult> GetFixturePredictions(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var prediction = await _fixturePreviewReadService.GetPredictionAsync(fixture.Id, cancellationToken);
+        return Ok(prediction);
+    }
+
+    [HttpGet("{apiFixtureId:long}/injuries")]
+    public async Task<IActionResult> GetFixtureInjuries(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var injuries = await _fixturePreviewReadService.GetInjuriesAsync(fixture.Id, cancellationToken);
+        return Ok(injuries);
+    }
+
+    [HttpGet("{apiFixtureId:long}/head-to-head")]
+    public async Task<IActionResult> GetHeadToHead(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var h2h = await _fixturePreviewReadService.GetHeadToHeadAsync(fixture, cancellationToken: cancellationToken);
+        return Ok(h2h);
+    }
+
+    [HttpGet("{apiFixtureId:long}/preview")]
+    public async Task<IActionResult> GetPreview(
+        long apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var detail = await BuildFixtureDetailAsync(fixture, marketName, cancellationToken);
+        var prediction = await _fixturePreviewReadService.GetPredictionAsync(fixture.Id, cancellationToken);
+        var injuries = await _fixturePreviewReadService.GetInjuriesAsync(fixture.Id, cancellationToken);
+        var homeForm = await _fixturePreviewReadService.GetRecentFormAsync(fixture, true, cancellationToken: cancellationToken);
+        var awayForm = await _fixturePreviewReadService.GetRecentFormAsync(fixture, false, cancellationToken: cancellationToken);
+        var headToHead = await _fixturePreviewReadService.GetHeadToHeadAsync(fixture, cancellationToken: cancellationToken);
+
+        return Ok(new FixturePreviewDto
         {
-            Fixture = MapFixture(fixture),
-            BestOdds = await _preMatchOddsService.GetBestOddsAsync(
-                apiFixtureId: apiFixtureId,
-                marketName: marketName,
-                cancellationToken: cancellationToken),
-            LatestOddsCollectedAtUtc = await _preMatchOddsService.GetLatestCollectedAtUtcAsync(
-                apiFixtureId: apiFixtureId,
-                marketName: marketName,
-                cancellationToken: cancellationToken),
-            FixturesUpcomingLastSyncedAtUtc = FindSyncValue("fixtures_upcoming"),
-            FixturesFullLastSyncedAtUtc = FindSyncValue("fixtures_full"),
-            OddsLastSyncedAtUtc = FindSyncValue("odds")
-        };
-
-        return Ok(detail);
+            Detail = detail,
+            Prediction = prediction,
+            Injuries = injuries,
+            HomeRecentForm = homeForm,
+            AwayRecentForm = awayForm,
+            HeadToHead = headToHead
+        });
     }
 
     [HttpGet("{apiFixtureId:long}/odds")]
@@ -323,6 +512,94 @@ public class FixturesController : ControllerBase
         }
 
         return Ok(bestOdds);
+    }
+
+    [HttpGet("{apiFixtureId:long}/odds/history")]
+    public async Task<IActionResult> GetFixtureOddsHistory(
+        long apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
+    {
+        var history = await _oddsAnalyticsService.GetHistoryAsync(
+            apiFixtureId,
+            marketName,
+            cancellationToken);
+
+        if (history is null)
+        {
+            return NotFound(new
+            {
+                Message = "No odds history found for this fixture."
+            });
+        }
+
+        return Ok(history);
+    }
+
+    [HttpGet("{apiFixtureId:long}/odds/movement")]
+    public async Task<IActionResult> GetFixtureOddsMovement(
+        long apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
+    {
+        var movement = await _oddsAnalyticsService.GetMovementAsync(
+            apiFixtureId,
+            marketName,
+            cancellationToken);
+
+        if (movement.Count == 0)
+        {
+            return NotFound(new
+            {
+                Message = "No odds movement analytics found for this fixture."
+            });
+        }
+
+        return Ok(movement);
+    }
+
+    [HttpGet("{apiFixtureId:long}/odds/consensus")]
+    public async Task<IActionResult> GetFixtureOddsConsensus(
+        long apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
+    {
+        var consensus = await _oddsAnalyticsService.GetConsensusAsync(
+            apiFixtureId,
+            marketName,
+            cancellationToken);
+
+        if (consensus is null)
+        {
+            return NotFound(new
+            {
+                Message = "No odds consensus found for this fixture."
+            });
+        }
+
+        return Ok(consensus);
+    }
+
+    [HttpGet("{apiFixtureId:long}/odds/value-signals")]
+    public async Task<IActionResult> GetFixtureOddsValueSignals(
+        long apiFixtureId,
+        [FromQuery] string? marketName,
+        CancellationToken cancellationToken = default)
+    {
+        var valueSignals = await _oddsAnalyticsService.GetValueSignalsAsync(
+            apiFixtureId,
+            marketName,
+            cancellationToken);
+
+        if (valueSignals is null)
+        {
+            return NotFound(new
+            {
+                Message = "No odds value signals found for this fixture."
+            });
+        }
+
+        return Ok(valueSignals);
     }
 
     private IQueryable<Fixture> BuildFilteredQuery(
@@ -459,6 +736,67 @@ public class FixturesController : ControllerBase
             AwayTeamLogoUrl = fixture.AwayTeam.LogoUrl,
             HomeGoals = fixture.HomeGoals,
             AwayGoals = fixture.AwayGoals
+        };
+    }
+
+    private async Task<Fixture?> GetFixtureWithRelationsAsync(long apiFixtureId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.Fixtures
+            .AsNoTracking()
+            .Include(x => x.League)
+                .ThenInclude(x => x.Country)
+            .Include(x => x.HomeTeam)
+            .Include(x => x.AwayTeam)
+            .FirstOrDefaultAsync(x => x.ApiFixtureId == apiFixtureId, cancellationToken);
+    }
+
+    private async Task<FixtureDetailDto> BuildFixtureDetailAsync(
+        Fixture fixture,
+        string? marketName,
+        CancellationToken cancellationToken)
+    {
+        var syncStates = await _dbContext.SyncStates
+            .AsNoTracking()
+            .Where(x =>
+                x.LeagueApiId == fixture.League.ApiLeagueId &&
+                x.Season == fixture.Season &&
+                (x.EntityType == "fixtures_upcoming" ||
+                 x.EntityType == "fixtures_full" ||
+                 x.EntityType == "odds"))
+            .ToListAsync(cancellationToken);
+
+        DateTime? FindSyncValue(string entityType)
+        {
+            return syncStates
+                .Where(x => x.EntityType == entityType)
+                .Select(x => (DateTime?)x.LastSyncedAt)
+                .OrderByDescending(x => x)
+                .FirstOrDefault();
+        }
+
+        return new FixtureDetailDto
+        {
+            Fixture = MapFixture(fixture),
+            BestOdds = await _preMatchOddsService.GetBestOddsAsync(
+                apiFixtureId: fixture.ApiFixtureId,
+                marketName: marketName,
+                cancellationToken: cancellationToken),
+            LatestOddsCollectedAtUtc = await _preMatchOddsService.GetLatestCollectedAtUtcAsync(
+                apiFixtureId: fixture.ApiFixtureId,
+                marketName: marketName,
+                cancellationToken: cancellationToken),
+            Freshness = new FixtureFreshnessDto
+            {
+                LastEventSyncedAtUtc = fixture.LastEventSyncedAtUtc,
+                LastStatisticsSyncedAtUtc = fixture.LastStatisticsSyncedAtUtc,
+                LastLineupsSyncedAtUtc = fixture.LastLineupsSyncedAtUtc,
+                LastPlayerStatisticsSyncedAtUtc = fixture.LastPlayerStatisticsSyncedAtUtc,
+                LastPredictionSyncedAtUtc = fixture.LastPredictionSyncedAtUtc,
+                LastInjuriesSyncedAtUtc = fixture.LastInjuriesSyncedAtUtc
+            },
+            FixturesUpcomingLastSyncedAtUtc = FindSyncValue("fixtures_upcoming"),
+            FixturesFullLastSyncedAtUtc = FindSyncValue("fixtures_full"),
+            OddsLastSyncedAtUtc = FindSyncValue("odds")
         };
     }
 }

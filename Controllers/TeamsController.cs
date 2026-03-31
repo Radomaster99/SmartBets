@@ -11,15 +11,18 @@ namespace SmartBets.Controllers;
 public class TeamsController : ControllerBase
 {
     private readonly TeamSyncService _teamSyncService;
+    private readonly TeamAnalyticsService _teamAnalyticsService;
     private readonly AppDbContext _dbContext;
     private readonly SyncStateService _syncStateService;
 
     public TeamsController(
         TeamSyncService teamSyncService,
+        TeamAnalyticsService teamAnalyticsService,
         AppDbContext dbContext,
         SyncStateService syncStateService)
     {
         _teamSyncService = teamSyncService;
+        _teamAnalyticsService = teamAnalyticsService;
         _dbContext = dbContext;
         _syncStateService = syncStateService;
     }
@@ -124,5 +127,84 @@ public class TeamsController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(teams);
+    }
+
+    [HttpPost("statistics/sync")]
+    public async Task<IActionResult> SyncStatistics(
+        [FromQuery] long leagueId,
+        [FromQuery] int season,
+        [FromQuery] long? teamId,
+        [FromQuery] int maxTeams = 25,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (leagueId <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        if (maxTeams <= 0)
+            return BadRequest("maxTeams must be greater than 0.");
+
+        var result = await _teamAnalyticsService.SyncStatisticsAsync(
+            leagueId,
+            season,
+            teamId,
+            maxTeams,
+            force,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpGet("{apiTeamId:long}/statistics")]
+    public async Task<IActionResult> GetStatistics(
+        long apiTeamId,
+        [FromQuery] long leagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken = default)
+    {
+        if (leagueId <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var statistics = await _teamAnalyticsService.GetTeamStatisticsAsync(
+            apiTeamId,
+            leagueId,
+            season,
+            cancellationToken);
+
+        return statistics is null
+            ? NotFound($"No stored team statistics were found for team {apiTeamId}, league {leagueId}, season {season}.")
+            : Ok(statistics);
+    }
+
+    [HttpGet("{apiTeamId:long}/form")]
+    public async Task<IActionResult> GetForm(
+        long apiTeamId,
+        [FromQuery] long leagueId,
+        [FromQuery] int season,
+        [FromQuery] int last = 5,
+        CancellationToken cancellationToken = default)
+    {
+        if (leagueId <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var form = await _teamAnalyticsService.GetTeamFormAsync(
+            apiTeamId,
+            leagueId,
+            season,
+            last,
+            cancellationToken);
+
+        return form is null
+            ? NotFound($"Team {apiTeamId} or league {leagueId} season {season} was not found.")
+            : Ok(form);
     }
 }

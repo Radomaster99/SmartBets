@@ -116,9 +116,37 @@ namespace SmartBets.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("kickoff_at");
 
+                    b.Property<DateTime?>("LastEventSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_event_synced_at_utc");
+
+                    b.Property<DateTime?>("LastInjuriesSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_injuries_synced_at_utc");
+
+                    b.Property<DateTime?>("LastLineupsSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_lineups_synced_at_utc");
+
+                    b.Property<DateTime?>("LastPlayerStatisticsSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_player_statistics_synced_at_utc");
+
+                    b.Property<DateTime?>("LastPredictionSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_prediction_synced_at_utc");
+
+                    b.Property<DateTime?>("LastStatisticsSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_statistics_synced_at_utc");
+
                     b.Property<long>("LeagueId")
                         .HasColumnType("bigint")
                         .HasColumnName("league_id");
+
+                    b.Property<int>("PostFinishMatchCenterSyncCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("post_finish_match_center_sync_count");
 
                     b.Property<int>("Season")
                         .HasColumnType("integer")
@@ -143,6 +171,668 @@ namespace SmartBets.Migrations
                     b.HasIndex("LeagueId");
 
                     b.ToTable("fixtures", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixtureEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("ApiTeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_team_id");
+
+                    b.Property<long?>("AssistApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("assist_api_id");
+
+                    b.Property<string>("AssistName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("assist_name");
+
+                    b.Property<string>("Comments")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("comments");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("detail");
+
+                    b.Property<int?>("Elapsed")
+                        .HasColumnType("integer")
+                        .HasColumnName("elapsed");
+
+                    b.Property<int?>("Extra")
+                        .HasColumnType("integer")
+                        .HasColumnName("extra");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<long?>("PlayerApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("player_api_id");
+
+                    b.Property<string>("PlayerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("player_name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId");
+
+                    b.HasIndex("FixtureId", "SortOrder");
+
+                    b.ToTable("fixture_events", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixtureInjury", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("ApiTeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_team_id");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<long?>("PlayerApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("player_api_id");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("player_name");
+
+                    b.Property<string>("PlayerPhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("player_photo_url");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId");
+
+                    b.HasIndex("FixtureId", "ApiTeamId");
+
+                    b.ToTable("fixture_injuries", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixtureLineup", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ApiTeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_team_id");
+
+                    b.Property<long?>("CoachApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("coach_api_id");
+
+                    b.Property<string>("CoachName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("coach_name");
+
+                    b.Property<string>("CoachPhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("coach_photo_url");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<string>("Formation")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("formation");
+
+                    b.Property<bool>("IsStarting")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_starting");
+
+                    b.Property<long?>("PlayerApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("player_api_id");
+
+                    b.Property<string>("PlayerGrid")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("player_grid");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("player_name");
+
+                    b.Property<int?>("PlayerNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("player_number");
+
+                    b.Property<string>("PlayerPosition")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("player_position");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId");
+
+                    b.HasIndex("FixtureId", "ApiTeamId", "IsStarting", "SortOrder");
+
+                    b.ToTable("fixture_lineups", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixturePlayerStatistic", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ApiTeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_team_id");
+
+                    b.Property<int?>("CardsRed")
+                        .HasColumnType("integer")
+                        .HasColumnName("cards_red");
+
+                    b.Property<int?>("CardsYellow")
+                        .HasColumnType("integer")
+                        .HasColumnName("cards_yellow");
+
+                    b.Property<int?>("DribblesAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("dribbles_attempts");
+
+                    b.Property<int?>("DribblesPast")
+                        .HasColumnType("integer")
+                        .HasColumnName("dribbles_past");
+
+                    b.Property<int?>("DribblesSuccess")
+                        .HasColumnType("integer")
+                        .HasColumnName("dribbles_success");
+
+                    b.Property<int?>("DuelsTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("duels_total");
+
+                    b.Property<int?>("DuelsWon")
+                        .HasColumnType("integer")
+                        .HasColumnName("duels_won");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<int?>("FoulsCommitted")
+                        .HasColumnType("integer")
+                        .HasColumnName("fouls_committed");
+
+                    b.Property<int?>("FoulsDrawn")
+                        .HasColumnType("integer")
+                        .HasColumnName("fouls_drawn");
+
+                    b.Property<int?>("GoalsAssists")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_assists");
+
+                    b.Property<int?>("GoalsConceded")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_conceded");
+
+                    b.Property<int?>("GoalsSaves")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_saves");
+
+                    b.Property<int?>("GoalsTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_total");
+
+                    b.Property<bool>("IsCaptain")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_captain");
+
+                    b.Property<bool>("IsSubstitute")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_substitute");
+
+                    b.Property<int?>("Minutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("minutes");
+
+                    b.Property<int?>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<int?>("Offsides")
+                        .HasColumnType("integer")
+                        .HasColumnName("offsides");
+
+                    b.Property<string>("PassesAccuracy")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("passes_accuracy");
+
+                    b.Property<int?>("PassesKey")
+                        .HasColumnType("integer")
+                        .HasColumnName("passes_key");
+
+                    b.Property<int?>("PassesTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("passes_total");
+
+                    b.Property<int?>("PenaltyCommitted")
+                        .HasColumnType("integer")
+                        .HasColumnName("penalty_committed");
+
+                    b.Property<int?>("PenaltyMissed")
+                        .HasColumnType("integer")
+                        .HasColumnName("penalty_missed");
+
+                    b.Property<int?>("PenaltySaved")
+                        .HasColumnType("integer")
+                        .HasColumnName("penalty_saved");
+
+                    b.Property<int?>("PenaltyScored")
+                        .HasColumnType("integer")
+                        .HasColumnName("penalty_scored");
+
+                    b.Property<int?>("PenaltyWon")
+                        .HasColumnType("integer")
+                        .HasColumnName("penalty_won");
+
+                    b.Property<long>("PlayerApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("player_api_id");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("player_name");
+
+                    b.Property<string>("PlayerPhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("player_photo_url");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("position");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("rating");
+
+                    b.Property<int?>("ShotsOn")
+                        .HasColumnType("integer")
+                        .HasColumnName("shots_on");
+
+                    b.Property<int?>("ShotsTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("shots_total");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<int?>("TacklesBlocks")
+                        .HasColumnType("integer")
+                        .HasColumnName("tackles_blocks");
+
+                    b.Property<int?>("TacklesInterceptions")
+                        .HasColumnType("integer")
+                        .HasColumnName("tackles_interceptions");
+
+                    b.Property<int?>("TacklesTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("tackles_total");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId");
+
+                    b.HasIndex("FixtureId", "ApiTeamId", "PlayerApiId");
+
+                    b.ToTable("fixture_player_statistics", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixturePrediction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Advice")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("advice");
+
+                    b.Property<string>("ComparisonAttackAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_attack_away");
+
+                    b.Property<string>("ComparisonAttackHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_attack_home");
+
+                    b.Property<string>("ComparisonDefenceAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_defence_away");
+
+                    b.Property<string>("ComparisonDefenceHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_defence_home");
+
+                    b.Property<string>("ComparisonFormAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_form_away");
+
+                    b.Property<string>("ComparisonFormHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_form_home");
+
+                    b.Property<string>("ComparisonGoalsAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_goals_away");
+
+                    b.Property<string>("ComparisonGoalsHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_goals_home");
+
+                    b.Property<string>("ComparisonHeadToHeadAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_head_to_head_away");
+
+                    b.Property<string>("ComparisonHeadToHeadHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_head_to_head_home");
+
+                    b.Property<string>("ComparisonPoissonAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_poisson_away");
+
+                    b.Property<string>("ComparisonPoissonHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_poisson_home");
+
+                    b.Property<string>("ComparisonTotalAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_total_away");
+
+                    b.Property<string>("ComparisonTotalHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("comparison_total_home");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<string>("GoalsAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("goals_away");
+
+                    b.Property<string>("GoalsHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("goals_home");
+
+                    b.Property<string>("PercentAway")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("percent_away");
+
+                    b.Property<string>("PercentDraw")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("percent_draw");
+
+                    b.Property<string>("PercentHome")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("percent_home");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<string>("UnderOver")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("under_over");
+
+                    b.Property<bool?>("WinOrDraw")
+                        .HasColumnType("boolean")
+                        .HasColumnName("win_or_draw");
+
+                    b.Property<string>("WinnerComment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("winner_comment");
+
+                    b.Property<long?>("WinnerTeamApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("winner_team_api_id");
+
+                    b.Property<string>("WinnerTeamName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("winner_team_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId");
+
+                    b.ToTable("fixture_predictions", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixtureStatistic", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ApiTeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_team_id");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("type");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId");
+
+                    b.HasIndex("FixtureId", "ApiTeamId", "SortOrder");
+
+                    b.ToTable("fixture_statistics", (string)null);
                 });
 
             modelBuilder.Entity("SmartBets.Entities.League", b =>
@@ -180,6 +870,745 @@ namespace SmartBets.Migrations
                         .IsUnique();
 
                     b.ToTable("leagues", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueRound", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_current");
+
+                    b.Property<long>("LeagueId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_id");
+
+                    b.Property<string>("RoundName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("round_name");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeagueId", "Season", "RoundName")
+                        .IsUnique();
+
+                    b.HasIndex("LeagueId", "Season", "SortOrder");
+
+                    b.ToTable("league_rounds", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueSeasonCoverage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("HasFixtureEvents")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_fixture_events");
+
+                    b.Property<bool>("HasFixtureStatistics")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_fixture_statistics");
+
+                    b.Property<bool>("HasFixtures")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_fixtures");
+
+                    b.Property<bool>("HasInjuries")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_injuries");
+
+                    b.Property<bool>("HasLineups")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_lineups");
+
+                    b.Property<bool>("HasOdds")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_odds");
+
+                    b.Property<bool>("HasPlayerStatistics")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_player_statistics");
+
+                    b.Property<bool>("HasPlayers")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_players");
+
+                    b.Property<bool>("HasPredictions")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_predictions");
+
+                    b.Property<bool>("HasStandings")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_standings");
+
+                    b.Property<bool>("HasTopAssists")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_top_assists");
+
+                    b.Property<bool>("HasTopCards")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_top_cards");
+
+                    b.Property<bool>("HasTopScorers")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_top_scorers");
+
+                    b.Property<long>("LeagueApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_api_id");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Season");
+
+                    b.HasIndex("LeagueApiId", "Season")
+                        .IsUnique();
+
+                    b.ToTable("league_season_coverages", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueTopAssist", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ApiPlayerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_player_id");
+
+                    b.Property<int?>("Appearances")
+                        .HasColumnType("integer")
+                        .HasColumnName("appearances");
+
+                    b.Property<int?>("Assists")
+                        .HasColumnType("integer")
+                        .HasColumnName("assists");
+
+                    b.Property<int?>("ChancesCreated")
+                        .HasColumnType("integer")
+                        .HasColumnName("chances_created");
+
+                    b.Property<int?>("Goals")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals");
+
+                    b.Property<long>("LeagueId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_id");
+
+                    b.Property<int?>("Minutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("minutes");
+
+                    b.Property<int?>("PassesKey")
+                        .HasColumnType("integer")
+                        .HasColumnName("passes_key");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("player_name");
+
+                    b.Property<string>("PlayerPhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("player_photo_url");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("position");
+
+                    b.Property<int>("Rank")
+                        .HasColumnType("integer")
+                        .HasColumnName("rank");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("rating");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long?>("TeamApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_api_id");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeagueId", "Season", "ApiPlayerId");
+
+                    b.HasIndex("LeagueId", "Season", "Rank")
+                        .IsUnique();
+
+                    b.ToTable("league_top_assists", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueTopCard", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ApiPlayerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_player_id");
+
+                    b.Property<int?>("Appearances")
+                        .HasColumnType("integer")
+                        .HasColumnName("appearances");
+
+                    b.Property<int>("CombinedRank")
+                        .HasColumnType("integer")
+                        .HasColumnName("combined_rank");
+
+                    b.Property<long>("LeagueId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_id");
+
+                    b.Property<int?>("Minutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("minutes");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("player_name");
+
+                    b.Property<string>("PlayerPhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("player_photo_url");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("position");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("rating");
+
+                    b.Property<int>("RedCards")
+                        .HasColumnType("integer")
+                        .HasColumnName("red_cards");
+
+                    b.Property<int?>("RedRank")
+                        .HasColumnType("integer")
+                        .HasColumnName("red_rank");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long?>("TeamApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_api_id");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.Property<int>("YellowCards")
+                        .HasColumnType("integer")
+                        .HasColumnName("yellow_cards");
+
+                    b.Property<int?>("YellowRank")
+                        .HasColumnType("integer")
+                        .HasColumnName("yellow_rank");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeagueId", "Season", "ApiPlayerId");
+
+                    b.HasIndex("LeagueId", "Season", "CombinedRank")
+                        .IsUnique();
+
+                    b.ToTable("league_top_cards", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueTopScorer", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ApiPlayerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("api_player_id");
+
+                    b.Property<int?>("Appearances")
+                        .HasColumnType("integer")
+                        .HasColumnName("appearances");
+
+                    b.Property<int?>("Assists")
+                        .HasColumnType("integer")
+                        .HasColumnName("assists");
+
+                    b.Property<int?>("Goals")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals");
+
+                    b.Property<long>("LeagueId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_id");
+
+                    b.Property<int?>("Minutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("minutes");
+
+                    b.Property<int?>("PenaltiesScored")
+                        .HasColumnType("integer")
+                        .HasColumnName("penalties_scored");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("player_name");
+
+                    b.Property<string>("PlayerPhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("player_photo_url");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("position");
+
+                    b.Property<int>("Rank")
+                        .HasColumnType("integer")
+                        .HasColumnName("rank");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("rating");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<int?>("ShotsOn")
+                        .HasColumnType("integer")
+                        .HasColumnName("shots_on");
+
+                    b.Property<int?>("ShotsTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("shots_total");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long?>("TeamApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_api_id");
+
+                    b.Property<long?>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<string>("TeamLogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("team_logo_url");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("team_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeagueId", "Season", "ApiPlayerId");
+
+                    b.HasIndex("LeagueId", "Season", "Rank")
+                        .IsUnique();
+
+                    b.ToTable("league_top_scorers", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.MarketConsensus", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("BestAwayBookmakerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("best_away_bookmaker_id");
+
+                    b.Property<decimal?>("BestAwayOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("best_away_odd");
+
+                    b.Property<long?>("BestDrawBookmakerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("best_draw_bookmaker_id");
+
+                    b.Property<decimal?>("BestDrawOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("best_draw_odd");
+
+                    b.Property<long?>("BestHomeBookmakerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("best_home_bookmaker_id");
+
+                    b.Property<decimal?>("BestHomeOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("best_home_odd");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<decimal?>("LatestAwayConsensusOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("latest_away_consensus_odd");
+
+                    b.Property<decimal?>("LatestDrawConsensusOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("latest_draw_consensus_odd");
+
+                    b.Property<decimal?>("LatestHomeConsensusOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("latest_home_consensus_odd");
+
+                    b.Property<string>("MarketName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("market_name");
+
+                    b.Property<decimal?>("MaxAwaySpread")
+                        .HasColumnType("numeric")
+                        .HasColumnName("max_away_spread");
+
+                    b.Property<decimal?>("MaxDrawSpread")
+                        .HasColumnType("numeric")
+                        .HasColumnName("max_draw_spread");
+
+                    b.Property<decimal?>("MaxHomeSpread")
+                        .HasColumnType("numeric")
+                        .HasColumnName("max_home_spread");
+
+                    b.Property<decimal?>("OpeningAwayConsensusOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("opening_away_consensus_odd");
+
+                    b.Property<decimal?>("OpeningDrawConsensusOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("opening_draw_consensus_odd");
+
+                    b.Property<decimal?>("OpeningHomeConsensusOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("opening_home_consensus_odd");
+
+                    b.Property<int>("SampleSize")
+                        .HasColumnType("integer")
+                        .HasColumnName("sample_size");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FixtureId", "MarketName")
+                        .IsUnique();
+
+                    b.ToTable("market_consensus", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.OddsMovement", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal?>("AwayChangePercent")
+                        .HasColumnType("numeric")
+                        .HasColumnName("away_change_percent");
+
+                    b.Property<decimal?>("AwayDelta")
+                        .HasColumnType("numeric")
+                        .HasColumnName("away_delta");
+
+                    b.Property<decimal?>("AwaySwing")
+                        .HasColumnType("numeric")
+                        .HasColumnName("away_swing");
+
+                    b.Property<long>("BookmakerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("bookmaker_id");
+
+                    b.Property<decimal?>("DrawChangePercent")
+                        .HasColumnType("numeric")
+                        .HasColumnName("draw_change_percent");
+
+                    b.Property<decimal?>("DrawDelta")
+                        .HasColumnType("numeric")
+                        .HasColumnName("draw_delta");
+
+                    b.Property<decimal?>("DrawSwing")
+                        .HasColumnType("numeric")
+                        .HasColumnName("draw_swing");
+
+                    b.Property<DateTime?>("FirstCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_collected_at_utc");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<decimal?>("HomeChangePercent")
+                        .HasColumnType("numeric")
+                        .HasColumnName("home_change_percent");
+
+                    b.Property<decimal?>("HomeDelta")
+                        .HasColumnType("numeric")
+                        .HasColumnName("home_delta");
+
+                    b.Property<decimal?>("HomeSwing")
+                        .HasColumnType("numeric")
+                        .HasColumnName("home_swing");
+
+                    b.Property<DateTime?>("LastCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_collected_at_utc");
+
+                    b.Property<string>("MarketName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("market_name");
+
+                    b.Property<int>("SnapshotCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("snapshot_count");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookmakerId");
+
+                    b.HasIndex("FixtureId", "MarketName");
+
+                    b.HasIndex("FixtureId", "BookmakerId", "MarketName")
+                        .IsUnique();
+
+                    b.ToTable("odds_movements", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.OddsOpenClose", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("BookmakerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("bookmaker_id");
+
+                    b.Property<decimal?>("ClosingAwayOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("closing_away_odd");
+
+                    b.Property<DateTime?>("ClosingCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closing_collected_at_utc");
+
+                    b.Property<decimal?>("ClosingDrawOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("closing_draw_odd");
+
+                    b.Property<decimal?>("ClosingHomeOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("closing_home_odd");
+
+                    b.Property<long>("FixtureId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fixture_id");
+
+                    b.Property<decimal?>("LatestAwayOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("latest_away_odd");
+
+                    b.Property<DateTime?>("LatestCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("latest_collected_at_utc");
+
+                    b.Property<decimal?>("LatestDrawOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("latest_draw_odd");
+
+                    b.Property<decimal?>("LatestHomeOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("latest_home_odd");
+
+                    b.Property<string>("MarketName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("market_name");
+
+                    b.Property<decimal?>("OpeningAwayOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("opening_away_odd");
+
+                    b.Property<DateTime?>("OpeningCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opening_collected_at_utc");
+
+                    b.Property<decimal?>("OpeningDrawOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("opening_draw_odd");
+
+                    b.Property<decimal?>("OpeningHomeOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("opening_home_odd");
+
+                    b.Property<DateTime?>("PeakAwayCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("peak_away_collected_at_utc");
+
+                    b.Property<decimal?>("PeakAwayOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("peak_away_odd");
+
+                    b.Property<DateTime?>("PeakDrawCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("peak_draw_collected_at_utc");
+
+                    b.Property<decimal?>("PeakDrawOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("peak_draw_odd");
+
+                    b.Property<DateTime?>("PeakHomeCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("peak_home_collected_at_utc");
+
+                    b.Property<decimal?>("PeakHomeOdd")
+                        .HasColumnType("numeric")
+                        .HasColumnName("peak_home_odd");
+
+                    b.Property<int>("SnapshotCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("snapshot_count");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookmakerId");
+
+                    b.HasIndex("FixtureId", "MarketName");
+
+                    b.HasIndex("FixtureId", "BookmakerId", "MarketName")
+                        .IsUnique();
+
+                    b.ToTable("odds_open_close", (string)null);
                 });
 
             modelBuilder.Entity("SmartBets.Entities.PreMatchOdd", b =>
@@ -232,6 +1661,97 @@ namespace SmartBets.Migrations
                     b.ToTable("pre_match_odds", (string)null);
                 });
 
+            modelBuilder.Entity("SmartBets.Entities.Standing", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("description");
+
+                    b.Property<int>("Draw")
+                        .HasColumnType("integer")
+                        .HasColumnName("draw");
+
+                    b.Property<string>("Form")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("form");
+
+                    b.Property<int>("GoalsAgainst")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_against");
+
+                    b.Property<int>("GoalsDiff")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_diff");
+
+                    b.Property<int>("GoalsFor")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_for");
+
+                    b.Property<string>("GroupName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("group_name");
+
+                    b.Property<long>("LeagueId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_id");
+
+                    b.Property<int>("Lose")
+                        .HasColumnType("integer")
+                        .HasColumnName("lose");
+
+                    b.Property<int>("Played")
+                        .HasColumnType("integer")
+                        .HasColumnName("played");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer")
+                        .HasColumnName("points");
+
+                    b.Property<int>("Rank")
+                        .HasColumnType("integer")
+                        .HasColumnName("rank");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<long>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<int>("Win")
+                        .HasColumnType("integer")
+                        .HasColumnName("win");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeagueId");
+
+                    b.HasIndex("Rank");
+
+                    b.HasIndex("TeamId");
+
+                    b.HasIndex("LeagueId", "Season", "TeamId")
+                        .IsUnique();
+
+                    b.ToTable("standings", (string)null);
+                });
+
             modelBuilder.Entity("SmartBets.Entities.SupportedLeague", b =>
                 {
                     b.Property<long>("Id")
@@ -267,6 +1787,62 @@ namespace SmartBets.Migrations
                         .IsUnique();
 
                     b.ToTable("supported_leagues", (string)null);
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.SyncError", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<string>("ErrorMessage")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<long?>("LeagueApiId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_api_id");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("operation");
+
+                    b.Property<int?>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("source");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityType");
+
+                    b.HasIndex("OccurredAt");
+
+                    b.HasIndex("EntityType", "LeagueApiId", "Season");
+
+                    b.ToTable("sync_errors", (string)null);
                 });
 
             modelBuilder.Entity("SmartBets.Entities.SyncState", b =>
@@ -347,6 +1923,223 @@ namespace SmartBets.Migrations
                     b.ToTable("teams", (string)null);
                 });
 
+            modelBuilder.Entity("SmartBets.Entities.TeamStatistic", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("BiggestGoalsAgainstAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("biggest_goals_against_away");
+
+                    b.Property<int?>("BiggestGoalsAgainstHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("biggest_goals_against_home");
+
+                    b.Property<int?>("BiggestGoalsForAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("biggest_goals_for_away");
+
+                    b.Property<int?>("BiggestGoalsForHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("biggest_goals_for_home");
+
+                    b.Property<string>("BiggestLossAway")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("biggest_loss_away");
+
+                    b.Property<string>("BiggestLossHome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("biggest_loss_home");
+
+                    b.Property<int>("BiggestStreakDraws")
+                        .HasColumnType("integer")
+                        .HasColumnName("biggest_streak_draws");
+
+                    b.Property<int>("BiggestStreakLosses")
+                        .HasColumnType("integer")
+                        .HasColumnName("biggest_streak_losses");
+
+                    b.Property<int>("BiggestStreakWins")
+                        .HasColumnType("integer")
+                        .HasColumnName("biggest_streak_wins");
+
+                    b.Property<string>("BiggestWinAway")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("biggest_win_away");
+
+                    b.Property<string>("BiggestWinHome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("biggest_win_home");
+
+                    b.Property<int>("CleanSheetsAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("clean_sheets_away");
+
+                    b.Property<int>("CleanSheetsHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("clean_sheets_home");
+
+                    b.Property<int>("CleanSheetsTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("clean_sheets_total");
+
+                    b.Property<int>("DrawsAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("draws_away");
+
+                    b.Property<int>("DrawsHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("draws_home");
+
+                    b.Property<int>("DrawsTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("draws_total");
+
+                    b.Property<int>("FailedToScoreAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_to_score_away");
+
+                    b.Property<int>("FailedToScoreHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_to_score_home");
+
+                    b.Property<int>("FailedToScoreTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_to_score_total");
+
+                    b.Property<int>("FixturesPlayedAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("fixtures_played_away");
+
+                    b.Property<int>("FixturesPlayedHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("fixtures_played_home");
+
+                    b.Property<int>("FixturesPlayedTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("fixtures_played_total");
+
+                    b.Property<string>("Form")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("form");
+
+                    b.Property<string>("GoalsAgainstAverageAway")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("goals_against_average_away");
+
+                    b.Property<string>("GoalsAgainstAverageHome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("goals_against_average_home");
+
+                    b.Property<string>("GoalsAgainstAverageTotal")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("goals_against_average_total");
+
+                    b.Property<int>("GoalsAgainstAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_against_away");
+
+                    b.Property<int>("GoalsAgainstHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_against_home");
+
+                    b.Property<int>("GoalsAgainstTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_against_total");
+
+                    b.Property<string>("GoalsForAverageAway")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("goals_for_average_away");
+
+                    b.Property<string>("GoalsForAverageHome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("goals_for_average_home");
+
+                    b.Property<string>("GoalsForAverageTotal")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("goals_for_average_total");
+
+                    b.Property<int>("GoalsForAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_for_away");
+
+                    b.Property<int>("GoalsForHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_for_home");
+
+                    b.Property<int>("GoalsForTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("goals_for_total");
+
+                    b.Property<long>("LeagueId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("league_id");
+
+                    b.Property<int>("LossesAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("losses_away");
+
+                    b.Property<int>("LossesHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("losses_home");
+
+                    b.Property<int>("LossesTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("losses_total");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at_utc");
+
+                    b.Property<long>("TeamId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("team_id");
+
+                    b.Property<int>("WinsAway")
+                        .HasColumnType("integer")
+                        .HasColumnName("wins_away");
+
+                    b.Property<int>("WinsHome")
+                        .HasColumnType("integer")
+                        .HasColumnName("wins_home");
+
+                    b.Property<int>("WinsTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("wins_total");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeagueId");
+
+                    b.HasIndex("TeamId");
+
+                    b.HasIndex("TeamId", "LeagueId", "Season")
+                        .IsUnique();
+
+                    b.ToTable("team_statistics", (string)null);
+                });
+
             modelBuilder.Entity("SmartBets.Entities.Fixture", b =>
                 {
                     b.HasOne("SmartBets.Entities.Team", "AwayTeam")
@@ -374,6 +2167,72 @@ namespace SmartBets.Migrations
                     b.Navigation("League");
                 });
 
+            modelBuilder.Entity("SmartBets.Entities.FixtureEvent", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("Events")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixtureInjury", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("Injuries")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixtureLineup", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("Lineups")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixturePlayerStatistic", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("PlayerStatistics")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixturePrediction", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("Predictions")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.FixtureStatistic", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("Statistics")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
             modelBuilder.Entity("SmartBets.Entities.League", b =>
                 {
                     b.HasOne("SmartBets.Entities.Country", "Country")
@@ -383,6 +2242,99 @@ namespace SmartBets.Migrations
                         .IsRequired();
 
                     b.Navigation("Country");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueRound", b =>
+                {
+                    b.HasOne("SmartBets.Entities.League", "League")
+                        .WithMany("Rounds")
+                        .HasForeignKey("LeagueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("League");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueTopAssist", b =>
+                {
+                    b.HasOne("SmartBets.Entities.League", "League")
+                        .WithMany("TopAssists")
+                        .HasForeignKey("LeagueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("League");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueTopCard", b =>
+                {
+                    b.HasOne("SmartBets.Entities.League", "League")
+                        .WithMany("TopCards")
+                        .HasForeignKey("LeagueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("League");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.LeagueTopScorer", b =>
+                {
+                    b.HasOne("SmartBets.Entities.League", "League")
+                        .WithMany("TopScorers")
+                        .HasForeignKey("LeagueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("League");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.MarketConsensus", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("MarketConsensuses")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.OddsMovement", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Bookmaker", "Bookmaker")
+                        .WithMany("OddsMovements")
+                        .HasForeignKey("BookmakerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("OddsMovements")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Bookmaker");
+
+                    b.Navigation("Fixture");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.OddsOpenClose", b =>
+                {
+                    b.HasOne("SmartBets.Entities.Bookmaker", "Bookmaker")
+                        .WithMany("OddsOpenCloses")
+                        .HasForeignKey("BookmakerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartBets.Entities.Fixture", "Fixture")
+                        .WithMany("OddsOpenCloses")
+                        .HasForeignKey("FixtureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Bookmaker");
+
+                    b.Navigation("Fixture");
                 });
 
             modelBuilder.Entity("SmartBets.Entities.PreMatchOdd", b =>
@@ -404,6 +2356,25 @@ namespace SmartBets.Migrations
                     b.Navigation("Fixture");
                 });
 
+            modelBuilder.Entity("SmartBets.Entities.Standing", b =>
+                {
+                    b.HasOne("SmartBets.Entities.League", "League")
+                        .WithMany("Standings")
+                        .HasForeignKey("LeagueId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartBets.Entities.Team", "Team")
+                        .WithMany("Standings")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("League");
+
+                    b.Navigation("Team");
+                });
+
             modelBuilder.Entity("SmartBets.Entities.Team", b =>
                 {
                     b.HasOne("SmartBets.Entities.Country", "Country")
@@ -414,8 +2385,31 @@ namespace SmartBets.Migrations
                     b.Navigation("Country");
                 });
 
+            modelBuilder.Entity("SmartBets.Entities.TeamStatistic", b =>
+                {
+                    b.HasOne("SmartBets.Entities.League", "League")
+                        .WithMany("TeamStatistics")
+                        .HasForeignKey("LeagueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartBets.Entities.Team", "Team")
+                        .WithMany("Statistics")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("League");
+
+                    b.Navigation("Team");
+                });
+
             modelBuilder.Entity("SmartBets.Entities.Bookmaker", b =>
                 {
+                    b.Navigation("OddsMovements");
+
+                    b.Navigation("OddsOpenCloses");
+
                     b.Navigation("PreMatchOdds");
                 });
 
@@ -428,12 +2422,49 @@ namespace SmartBets.Migrations
 
             modelBuilder.Entity("SmartBets.Entities.Fixture", b =>
                 {
+                    b.Navigation("Events");
+
+                    b.Navigation("Injuries");
+
+                    b.Navigation("Lineups");
+
+                    b.Navigation("MarketConsensuses");
+
+                    b.Navigation("OddsMovements");
+
+                    b.Navigation("OddsOpenCloses");
+
+                    b.Navigation("PlayerStatistics");
+
                     b.Navigation("PreMatchOdds");
+
+                    b.Navigation("Predictions");
+
+                    b.Navigation("Statistics");
                 });
 
             modelBuilder.Entity("SmartBets.Entities.League", b =>
                 {
                     b.Navigation("Fixtures");
+
+                    b.Navigation("Rounds");
+
+                    b.Navigation("Standings");
+
+                    b.Navigation("TeamStatistics");
+
+                    b.Navigation("TopAssists");
+
+                    b.Navigation("TopCards");
+
+                    b.Navigation("TopScorers");
+                });
+
+            modelBuilder.Entity("SmartBets.Entities.Team", b =>
+                {
+                    b.Navigation("Standings");
+
+                    b.Navigation("Statistics");
                 });
 #pragma warning restore 612, 618
         }

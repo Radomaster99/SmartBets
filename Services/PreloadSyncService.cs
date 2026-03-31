@@ -22,6 +22,7 @@ public class PreloadSyncLeagueResult
     public int StandingsUpdated { get; set; }
     public int StandingsSkippedMissingTeams { get; set; }
 
+    public List<string> SkippedFeatures { get; set; } = new();
     public string Status { get; set; } = "Success";
     public string? Error { get; set; }
 }
@@ -42,6 +43,8 @@ public class PreloadSyncService
     private readonly TeamSyncService _teamSyncService;
     private readonly FixtureSyncService _fixtureSyncService;
     private readonly StandingsSyncService _standingsSyncService;
+    private readonly LeagueCoverageService _leagueCoverageService;
+    private readonly SyncErrorService _syncErrorService;
     private readonly SyncStateService _syncStateService;
 
     public PreloadSyncService(
@@ -51,6 +54,8 @@ public class PreloadSyncService
         TeamSyncService teamSyncService,
         FixtureSyncService fixtureSyncService,
         StandingsSyncService standingsSyncService,
+        LeagueCoverageService leagueCoverageService,
+        SyncErrorService syncErrorService,
         SyncStateService syncStateService)
     {
         _dbContext = dbContext;
@@ -59,6 +64,8 @@ public class PreloadSyncService
         _teamSyncService = teamSyncService;
         _fixtureSyncService = fixtureSyncService;
         _standingsSyncService = standingsSyncService;
+        _leagueCoverageService = leagueCoverageService;
+        _syncErrorService = syncErrorService;
         _syncStateService = syncStateService;
     }
 
@@ -130,41 +137,58 @@ public class PreloadSyncService
                     nowUtc,
                     cancellationToken);
 
-                // Upcoming fixtures
-                var fixtureResult = await _fixtureSyncService.SyncUpcomingFixturesAsync(
+                var coverage = await _leagueCoverageService.GetCoverageAsync(
                     supportedLeague.LeagueApiId,
                     supportedLeague.Season,
                     cancellationToken);
 
-                leagueResult.FixturesProcessed = fixtureResult.Processed;
-                leagueResult.FixturesInserted = fixtureResult.Inserted;
-                leagueResult.FixturesUpdated = fixtureResult.Updated;
-                leagueResult.FixturesSkippedMissingTeams = fixtureResult.SkippedMissingTeams;
+                if (coverage is not null && !coverage.HasFixtures)
+                {
+                    leagueResult.SkippedFeatures.Add("fixtures_upcoming");
+                }
+                else
+                {
+                    var fixtureResult = await _fixtureSyncService.SyncUpcomingFixturesAsync(
+                        supportedLeague.LeagueApiId,
+                        supportedLeague.Season,
+                        cancellationToken);
 
-                await _syncStateService.SetLastSyncedAtAsync(
-                    "fixtures_upcoming",
-                    supportedLeague.LeagueApiId,
-                    supportedLeague.Season,
-                    nowUtc,
-                    cancellationToken);
+                    leagueResult.FixturesProcessed = fixtureResult.Processed;
+                    leagueResult.FixturesInserted = fixtureResult.Inserted;
+                    leagueResult.FixturesUpdated = fixtureResult.Updated;
+                    leagueResult.FixturesSkippedMissingTeams = fixtureResult.SkippedMissingTeams;
 
-                // Standings
-                var standingsResult = await _standingsSyncService.SyncStandingsAsync(
-                    supportedLeague.LeagueApiId,
-                    supportedLeague.Season,
-                    cancellationToken);
+                    await _syncStateService.SetLastSyncedAtAsync(
+                        "fixtures_upcoming",
+                        supportedLeague.LeagueApiId,
+                        supportedLeague.Season,
+                        nowUtc,
+                        cancellationToken);
+                }
 
-                leagueResult.StandingsProcessed = standingsResult.Processed;
-                leagueResult.StandingsInserted = standingsResult.Inserted;
-                leagueResult.StandingsUpdated = standingsResult.Updated;
-                leagueResult.StandingsSkippedMissingTeams = standingsResult.SkippedMissingTeams;
+                if (coverage is not null && !coverage.HasStandings)
+                {
+                    leagueResult.SkippedFeatures.Add("standings");
+                }
+                else
+                {
+                    var standingsResult = await _standingsSyncService.SyncStandingsAsync(
+                        supportedLeague.LeagueApiId,
+                        supportedLeague.Season,
+                        cancellationToken);
 
-                await _syncStateService.SetLastSyncedAtAsync(
-                    "standings",
-                    supportedLeague.LeagueApiId,
-                    supportedLeague.Season,
-                    nowUtc,
-                    cancellationToken);
+                    leagueResult.StandingsProcessed = standingsResult.Processed;
+                    leagueResult.StandingsInserted = standingsResult.Inserted;
+                    leagueResult.StandingsUpdated = standingsResult.Updated;
+                    leagueResult.StandingsSkippedMissingTeams = standingsResult.SkippedMissingTeams;
+
+                    await _syncStateService.SetLastSyncedAtAsync(
+                        "standings",
+                        supportedLeague.LeagueApiId,
+                        supportedLeague.Season,
+                        nowUtc,
+                        cancellationToken);
+                }
 
                 leagueResult.Status = "Success";
             }
@@ -172,6 +196,15 @@ public class PreloadSyncService
             {
                 leagueResult.Status = "Failed";
                 leagueResult.Error = ex.Message;
+
+                await _syncErrorService.RecordAsync(
+                    "preload",
+                    "run",
+                    "preload",
+                    ex.Message,
+                    supportedLeague.LeagueApiId,
+                    supportedLeague.Season,
+                    cancellationToken);
             }
 
             result.Leagues.Add(leagueResult);

@@ -11,4 +11,5 @@ public class Team
 
     public Country? Country { get; set; }
     public ICollection<Standing> Standings { get; set; } = new List<Standing>();
+    public ICollection<TeamStatistic> Statistics { get; set; } = new List<TeamStatistic>();
 }

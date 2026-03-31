@@ -26,11 +26,19 @@ public class PreMatchOddsService
 
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
+    private readonly LeagueCoverageService _leagueCoverageService;
+    private readonly OddsAnalyticsService _oddsAnalyticsService;
 
-    public PreMatchOddsService(AppDbContext dbContext, FootballApiService apiService)
+    public PreMatchOddsService(
+        AppDbContext dbContext,
+        FootballApiService apiService,
+        LeagueCoverageService leagueCoverageService,
+        OddsAnalyticsService oddsAnalyticsService)
     {
         _dbContext = dbContext;
         _apiService = apiService;
+        _leagueCoverageService = leagueCoverageService;
+        _oddsAnalyticsService = oddsAnalyticsService;
     }
 
     public async Task<OddsSyncResult> SyncOddsAsync(
@@ -40,6 +48,8 @@ public class PreMatchOddsService
         CancellationToken cancellationToken = default)
     {
         var normalizedMarketName = NormalizeMarketName(marketName);
+
+        await _leagueCoverageService.EnsureOddsSupportedAsync(leagueId, season, cancellationToken);
 
         var leagueExists = await _dbContext.Leagues
             .AsNoTracking()
@@ -91,6 +101,7 @@ public class PreMatchOddsService
 
         var apiOddsFixtures = await _apiService.GetOddsAsync(leagueId, season, cancellationToken);
         var collectedAtUtc = DateTime.UtcNow;
+        var touchedFixtureIds = new HashSet<long>();
 
         var result = new OddsSyncResult
         {
@@ -106,6 +117,7 @@ public class PreMatchOddsService
             }
 
             result.FixturesMatched++;
+            touchedFixtureIds.Add(fixture.Id);
 
             foreach (var apiBookmaker in fixtureItem.Bookmakers)
             {
@@ -181,6 +193,14 @@ public class PreMatchOddsService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (touchedFixtureIds.Count > 0)
+        {
+            await _oddsAnalyticsService.RebuildForFixtureIdsAsync(
+                touchedFixtureIds,
+                normalizedMarketName,
+                cancellationToken);
+        }
 
         return result;
     }

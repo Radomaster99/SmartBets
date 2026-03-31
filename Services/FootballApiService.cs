@@ -290,4 +290,181 @@ public class FootballApiService
 
         return result?.Response ?? new List<ApiFootballFixtureItem>();
     }
+
+    public async Task<List<ApiFootballFixtureEventItem>> GetFixtureEventsAsync(
+        long fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballFixtureEventsResponse>(
+            $"/fixtures/events?fixture={fixtureId}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballFixtureEventItem>();
+    }
+
+    public async Task<List<ApiFootballFixtureLineupItem>> GetFixtureLineupsAsync(
+        long fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballFixtureLineupsResponse>(
+            $"/fixtures/lineups?fixture={fixtureId}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballFixtureLineupItem>();
+    }
+
+    public async Task<List<ApiFootballFixtureStatisticsItem>> GetFixtureStatisticsAsync(
+        long fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballFixtureStatisticsResponse>(
+            $"/fixtures/statistics?fixture={fixtureId}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballFixtureStatisticsItem>();
+    }
+
+    public async Task<List<ApiFootballFixturePlayersTeamItem>> GetFixturePlayersAsync(
+        long fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballFixturePlayersResponse>(
+            $"/fixtures/players?fixture={fixtureId}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballFixturePlayersTeamItem>();
+    }
+
+    public async Task<ApiFootballPredictionItem?> GetPredictionAsync(
+        long fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballPredictionsResponse>(
+            $"/predictions?fixture={fixtureId}",
+            cancellationToken);
+
+        return result?.Response?.FirstOrDefault();
+    }
+
+    public async Task<List<ApiFootballInjuryItem>> GetFixtureInjuriesAsync(
+        long fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballInjuriesResponse>(
+            $"/injuries?fixture={fixtureId}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballInjuryItem>();
+    }
+
+    public async Task<ApiFootballTeamStatisticsItem?> GetTeamStatisticsAsync(
+        long teamId,
+        long leagueId,
+        int season,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballTeamStatisticsResponse>(
+            $"/teams/statistics?team={teamId}&league={leagueId}&season={season}",
+            cancellationToken);
+
+        return result?.Response;
+    }
+
+    public async Task<List<string>> GetRoundsAsync(
+        long leagueId,
+        int season,
+        bool currentOnly = false,
+        CancellationToken cancellationToken = default)
+    {
+        var currentQuery = currentOnly ? "&current=true" : string.Empty;
+
+        var result = await SendGetAsync<ApiFootballRoundsResponse>(
+            $"/fixtures/rounds?league={leagueId}&season={season}{currentQuery}",
+            cancellationToken);
+
+        return result?.Response ?? new List<string>();
+    }
+
+    public async Task<List<ApiFootballTopPlayerItem>> GetTopScorersAsync(
+        long leagueId,
+        int season,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballTopPlayersResponse>(
+            $"/players/topscorers?league={leagueId}&season={season}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballTopPlayerItem>();
+    }
+
+    public async Task<List<ApiFootballTopPlayerItem>> GetTopAssistsAsync(
+        long leagueId,
+        int season,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballTopPlayersResponse>(
+            $"/players/topassists?league={leagueId}&season={season}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballTopPlayerItem>();
+    }
+
+    public async Task<List<ApiFootballTopPlayerItem>> GetTopYellowCardsAsync(
+        long leagueId,
+        int season,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballTopPlayersResponse>(
+            $"/players/topyellowcards?league={leagueId}&season={season}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballTopPlayerItem>();
+    }
+
+    public async Task<List<ApiFootballTopPlayerItem>> GetTopRedCardsAsync(
+        long leagueId,
+        int season,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballTopPlayersResponse>(
+            $"/players/topredcards?league={leagueId}&season={season}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballTopPlayerItem>();
+    }
+
+    private async Task<T?> SendGetAsync<T>(string relativeUrl, CancellationToken cancellationToken)
+    {
+        var baseUrl = _configuration["ApiFootball:BaseUrl"];
+        var apiKey = _configuration["ApiFootball:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new InvalidOperationException("ApiFootball:BaseUrl is missing.");
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("ApiFootball:ApiKey is missing.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl.TrimEnd('/')}{relativeUrl}");
+        request.Headers.Add("x-apisports-key", apiKey);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            throw new InvalidOperationException("API-Football rate limit reached. Try again later or reduce sync scope.");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        return await JsonSerializer.DeserializeAsync<T>(
+            stream,
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            },
+            cancellationToken);
+    }
 }

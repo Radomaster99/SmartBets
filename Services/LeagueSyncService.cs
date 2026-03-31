@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Entities;
 
@@ -23,12 +23,17 @@ public class LeagueSyncService
         var countriesByName = countries.ToDictionary(x => x.Name.ToLowerInvariant());
 
         var existingLeagues = await _dbContext.Leagues.ToListAsync(cancellationToken);
-
-        var existingLookup = existingLeagues.ToDictionary(
+        var existingLeaguesLookup = existingLeagues.ToDictionary(
             x => $"{x.ApiLeagueId}_{x.Season}",
             x => x);
 
+        var existingCoverages = await _dbContext.LeagueSeasonCoverages.ToListAsync(cancellationToken);
+        var existingCoveragesLookup = existingCoverages.ToDictionary(
+            x => $"{x.LeagueApiId}_{x.Season}",
+            x => x);
+
         var processed = 0;
+        var nowUtc = DateTime.UtcNow;
 
         foreach (var item in apiLeagues)
         {
@@ -39,18 +44,22 @@ public class LeagueSyncService
                 continue;
 
             if (!countriesByName.TryGetValue(countryName, out var country))
-                continue; // skip ако няма country
+                continue;
 
             foreach (var season in item.Seasons)
             {
                 var key = $"{league.Id}_{season.Year}";
 
-                if (existingLookup.TryGetValue(key, out var existing))
+                if (existingLeaguesLookup.TryGetValue(key, out var existingLeague))
                 {
-                    // update ако трябва
-                    if (existing.Name != league.Name)
+                    if (existingLeague.Name != league.Name)
                     {
-                        existing.Name = league.Name;
+                        existingLeague.Name = league.Name;
+                    }
+
+                    if (existingLeague.CountryId != country.Id)
+                    {
+                        existingLeague.CountryId = country.Id;
                     }
                 }
                 else
@@ -64,7 +73,30 @@ public class LeagueSyncService
                     };
 
                     _dbContext.Leagues.Add(newLeague);
-                    existingLookup[key] = newLeague;
+                    existingLeaguesLookup[key] = newLeague;
+                }
+
+                var apiCoverage = season.Coverage;
+
+                if (existingCoveragesLookup.TryGetValue(key, out var existingCoverage))
+                {
+                    ApplyCoverage(existingCoverage, apiCoverage);
+                    existingCoverage.UpdatedAt = nowUtc;
+                }
+                else
+                {
+                    var newCoverage = new LeagueSeasonCoverage
+                    {
+                        LeagueApiId = league.Id,
+                        Season = season.Year,
+                        CreatedAt = nowUtc,
+                        UpdatedAt = nowUtc
+                    };
+
+                    ApplyCoverage(newCoverage, apiCoverage);
+
+                    _dbContext.LeagueSeasonCoverages.Add(newCoverage);
+                    existingCoveragesLookup[key] = newCoverage;
                 }
 
                 processed++;
@@ -74,5 +106,24 @@ public class LeagueSyncService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return processed;
+    }
+
+    private static void ApplyCoverage(
+        LeagueSeasonCoverage target,
+        Models.ApiFootball.ApiFootballLeagueSeasonCoverage? source)
+    {
+        target.HasFixtures = source is not null;
+        target.HasFixtureEvents = source?.Fixtures.Events ?? false;
+        target.HasLineups = source?.Fixtures.Lineups ?? false;
+        target.HasFixtureStatistics = source?.Fixtures.StatisticsFixtures ?? false;
+        target.HasPlayerStatistics = source?.Fixtures.StatisticsPlayers ?? false;
+        target.HasStandings = source?.Standings ?? false;
+        target.HasPlayers = source?.Players ?? false;
+        target.HasTopScorers = source?.TopScorers ?? false;
+        target.HasTopAssists = source?.TopAssists ?? false;
+        target.HasTopCards = source?.TopCards ?? false;
+        target.HasInjuries = source?.Injuries ?? false;
+        target.HasPredictions = source?.Predictions ?? false;
+        target.HasOdds = source?.Odds ?? false;
     }
 }
