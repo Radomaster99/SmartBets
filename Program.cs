@@ -65,6 +65,7 @@ builder.Services.AddScoped<BookmakerSyncService>();
 builder.Services.AddScoped<DiscoveryService>();
 builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
+builder.Services.AddScoped<StandingsSyncService>();
 
 // CORS
 var allowedOrigins = builder.Configuration["CORS:AllowedOrigins"]?

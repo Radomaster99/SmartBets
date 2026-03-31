@@ -1,0 +1,76 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SmartBets.Data;
+using SmartBets.Dtos;
+using SmartBets.Services;
+
+namespace SmartBets.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class StandingsController : ControllerBase
+{
+    private readonly StandingsSyncService _syncService;
+    private readonly AppDbContext _dbContext;
+
+    public StandingsController(StandingsSyncService syncService, AppDbContext dbContext)
+    {
+        _syncService = syncService;
+        _dbContext = dbContext;
+    }
+
+    [HttpPost("sync")]
+    public async Task<IActionResult> Sync(
+        [FromQuery] long leagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken)
+    {
+        var result = await _syncService.SyncStandingsAsync(leagueId, season, cancellationToken);
+
+        return Ok(new
+        {
+            Message = "Standings synced successfully.",
+            LeagueId = leagueId,
+            Season = season,
+            result.Processed,
+            result.Inserted,
+            result.Updated,
+            result.SkippedMissingTeams
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] long leagueId,
+        [FromQuery] int season,
+        CancellationToken cancellationToken)
+    {
+        var standings = await _dbContext.Standings
+            .AsNoTracking()
+            .Include(x => x.League)
+            .Include(x => x.Team)
+            .Where(x => x.League.ApiLeagueId == leagueId && x.Season == season)
+            .OrderBy(x => x.Rank)
+            .Select(x => new StandingDto
+            {
+                Rank = x.Rank,
+                TeamName = x.Team.Name,
+                TeamLogoUrl = x.Team.LogoUrl,
+                Points = x.Points,
+                GoalsDiff = x.GoalsDiff,
+                GroupName = x.GroupName,
+                Form = x.Form,
+                Status = x.Status,
+                Description = x.Description,
+                Played = x.Played,
+                Win = x.Win,
+                Draw = x.Draw,
+                Lose = x.Lose,
+                GoalsFor = x.GoalsFor,
+                GoalsAgainst = x.GoalsAgainst
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(standings);
+    }
+}

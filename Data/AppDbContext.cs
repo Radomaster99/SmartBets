@@ -17,6 +17,8 @@ public class AppDbContext : DbContext
     public DbSet<PreMatchOdd> PreMatchOdds => Set<PreMatchOdd>();
     public DbSet<SupportedLeague> SupportedLeagues => Set<SupportedLeague>();
     public DbSet<SyncState> SyncStates => Set<SyncState>();
+    public DbSet<Standing> Standings => Set<Standing>();
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +47,45 @@ public class AppDbContext : DbContext
 
             entity.HasIndex(x => x.Name);
             entity.HasIndex(x => x.Code);
+        });
+
+        modelBuilder.Entity<Standing>(entity =>
+        {
+            entity.ToTable("standings");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.LeagueId).HasColumnName("league_id");
+            entity.Property(x => x.Season).HasColumnName("season");
+            entity.Property(x => x.TeamId).HasColumnName("team_id");
+            entity.Property(x => x.Rank).HasColumnName("rank");
+            entity.Property(x => x.Points).HasColumnName("points");
+            entity.Property(x => x.GoalsDiff).HasColumnName("goals_diff");
+            entity.Property(x => x.GroupName).HasColumnName("group_name").HasMaxLength(200);
+            entity.Property(x => x.Form).HasColumnName("form").HasMaxLength(50);
+            entity.Property(x => x.Status).HasColumnName("status").HasMaxLength(50);
+            entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(200);
+            entity.Property(x => x.Played).HasColumnName("played");
+            entity.Property(x => x.Win).HasColumnName("win");
+            entity.Property(x => x.Draw).HasColumnName("draw");
+            entity.Property(x => x.Lose).HasColumnName("lose");
+            entity.Property(x => x.GoalsFor).HasColumnName("goals_for");
+            entity.Property(x => x.GoalsAgainst).HasColumnName("goals_against");
+
+            entity.HasIndex(x => new { x.LeagueId, x.Season, x.TeamId }).IsUnique();
+            entity.HasIndex(x => x.LeagueId);
+            entity.HasIndex(x => x.TeamId);
+            entity.HasIndex(x => x.Rank);
+
+            entity.HasOne(x => x.League)
+                .WithMany(x => x.Standings)
+                .HasForeignKey(x => x.LeagueId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(x => x.Team)
+                .WithMany(x => x.Standings)
+                .HasForeignKey(x => x.TeamId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<League>(entity =>

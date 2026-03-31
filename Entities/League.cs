@@ -10,4 +10,5 @@ public class League
 
     public Country Country { get; set; } = null!;
     public ICollection<Fixture> Fixtures { get; set; } = new List<Fixture>();
+    public ICollection<Standing> Standings { get; set; } = new List<Standing>();
 }

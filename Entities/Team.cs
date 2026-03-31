@@ -10,4 +10,5 @@ public class Team
     public string? LogoUrl { get; set; }
 
     public Country? Country { get; set; }
+    public ICollection<Standing> Standings { get; set; } = new List<Standing>();
 }
