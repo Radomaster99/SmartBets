@@ -76,8 +76,14 @@ public class FlexibleStringConverter : JsonConverter<string>
             JsonTokenType.True => "true",
             JsonTokenType.False => "false",
             JsonTokenType.Null => string.Empty,
-            _ => reader.GetRawText()
+            _ => ReadRawJson(ref reader)
         };
+    }
+
+    private static string ReadRawJson(ref Utf8JsonReader reader)
+    {
+        using var doc = JsonDocument.ParseValue(ref reader);
+        return doc.RootElement.GetRawText();
     }
 
     public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
