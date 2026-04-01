@@ -244,3 +244,48 @@ Accept: application/json
 GET {{SmartBets_HostAddress}}/api/sync-status?activeOnly=true&season=2025
 X-API-KEY: {{ApiKey}}
 Accept: application/json
+
+### Get active supported leagues
+GET {{SmartBets_HostAddress}}/api/supported-leagues?activeOnly=true
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
+### Add one supported league
+POST {{SmartBets_HostAddress}}/api/admin/supported-leagues
+X-API-KEY: {{ApiKey}}
+Content-Type: application/json
+
+{
+  "leagueApiId": 39,
+  "season": 2025,
+  "isActive": true,
+  "priority": 10
+}
+
+### Bulk add or update supported leagues
+POST {{SmartBets_HostAddress}}/api/admin/supported-leagues/bulk
+X-API-KEY: {{ApiKey}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "leagueApiId": 1,
+      "season": 2026,
+      "isActive": true,
+      "priority": 1
+    },
+    {
+      "leagueApiId": 140,
+      "season": 2025,
+      "isActive": true,
+      "priority": 10
+    },
+    {
+      "leagueApiId": 39,
+      "season": 2025,
+      "isActive": true,
+      "priority": 20
+    }
+  ]
+}

@@ -958,6 +958,32 @@ Body:
 - съответната лига и сезон трябва вече да съществуват в локалната таблица `leagues`
 - не допуска duplicate запис за същите `LeagueApiId + Season`
 
+### 18.2.1 `POST /api/admin/supported-leagues/bulk`
+
+Предназначение:
+- bulk add/update за много записи в `supported_leagues`
+- удобен е когато искаш да добавиш цял списък лиги за следене наведнъж
+
+Body:
+- `Items` - масив от обекти със:
+  - `LeagueApiId`
+  - `Season`
+  - `IsActive`
+  - `Priority`
+
+Поведение:
+- ако записът не съществува: създава се
+- ако записът вече съществува: обновява `IsActive` и `Priority`
+- ако лигата/сезонът липсват в локалната таблица `leagues`: този елемент се маркира като failed, без да спира целия batch
+
+Отговор:
+- `Received`
+- `Created`
+- `Updated`
+- `Unchanged`
+- `Failed`
+- `Results`
+
 ### 18.3 `PATCH /api/admin/supported-leagues/{id}`
 
 Предназначение:
