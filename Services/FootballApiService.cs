@@ -403,11 +403,58 @@ public class FootballApiService
         int season,
         CancellationToken cancellationToken = default)
     {
-        var result = await SendGetAsync<ApiFootballTeamStatisticsResponse>(
-            $"/teams/statistics?team={teamId}&league={leagueId}&season={season}",
-            cancellationToken);
+        var baseUrl = _configuration["ApiFootball:BaseUrl"];
+        var apiKey = _configuration["ApiFootball:ApiKey"];
 
-        return result?.Response;
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new InvalidOperationException("ApiFootball:BaseUrl is missing.");
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("ApiFootball:ApiKey is missing.");
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{baseUrl.TrimEnd('/')}/teams/statistics?team={teamId}&league={leagueId}&season={season}");
+        request.Headers.Add("x-apisports-key", apiKey);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await SendAsyncWithQuotaAwarenessAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            throw new InvalidOperationException("API-Football rate limit reached. Try again later or reduce sync scope.");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+            if (!document.RootElement.TryGetProperty("response", out var responseElement))
+                return null;
+
+            return responseElement.ValueKind switch
+            {
+                JsonValueKind.Object => DeserializeTeamStatistics(responseElement),
+                JsonValueKind.Array => DeserializeTeamStatisticsArray(responseElement),
+                JsonValueKind.Null => null,
+                _ => null
+            };
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to deserialize team statistics for team {TeamId}, league {LeagueId}, season {Season}. Treating as no data.",
+                teamId,
+                leagueId,
+                season);
+
+            return null;
+        }
     }
 
     public async Task<List<string>> GetRoundsAsync(
@@ -548,6 +595,27 @@ public class FootballApiService
                 PropertyNameCaseInsensitive = true
             },
             cancellationToken);
+    }
+
+    private static ApiFootballTeamStatisticsItem? DeserializeTeamStatistics(JsonElement element)
+    {
+        return JsonSerializer.Deserialize<ApiFootballTeamStatisticsItem>(
+            element.GetRawText(),
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+    }
+
+    private static ApiFootballTeamStatisticsItem? DeserializeTeamStatisticsArray(JsonElement element)
+    {
+        if (element.GetArrayLength() == 0)
+            return null;
+
+        var first = element[0];
+        return first.ValueKind == JsonValueKind.Object
+            ? DeserializeTeamStatistics(first)
+            : null;
     }
 
     private async Task<HttpResponseMessage> SendAsyncWithQuotaAwarenessAsync(
