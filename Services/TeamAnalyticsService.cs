@@ -234,17 +234,27 @@ public class TeamAnalyticsService
             return team is null ? new List<Team>() : new List<Team> { team };
         }
 
-        var fixtureTeamIds = await _dbContext.Fixtures
+        var homeTeamIdsQuery = _dbContext.Fixtures
             .AsNoTracking()
             .Where(x => x.LeagueId == leagueId)
-            .SelectMany(x => new[] { x.HomeTeamId, x.AwayTeamId })
+            .Select(x => x.HomeTeamId);
+
+        var awayTeamIdsQuery = _dbContext.Fixtures
+            .AsNoTracking()
+            .Where(x => x.LeagueId == leagueId)
+            .Select(x => x.AwayTeamId);
+
+        var fixtureTeamIds = await homeTeamIdsQuery
+            .Concat(awayTeamIdsQuery)
             .Distinct()
+            .OrderBy(x => x)
             .Take(maxTeams)
             .ToListAsync(cancellationToken);
 
         if (fixtureTeamIds.Count > 0)
         {
             return await _dbContext.Teams
+                .AsNoTracking()
                 .Where(x => fixtureTeamIds.Contains(x.Id))
                 .OrderBy(x => x.Name)
                 .ToListAsync(cancellationToken);
@@ -260,6 +270,7 @@ public class TeamAnalyticsService
             .ToListAsync(cancellationToken);
 
         return await _dbContext.Teams
+            .AsNoTracking()
             .Where(x => standingTeamIds.Contains(x.Id))
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
