@@ -105,6 +105,7 @@ Stage 8 internal live automation:
   - live status heartbeat every 30s
   - match-center refresh every 60s
   - players only every 180s and only when live fixture count is small
+  - team statistics refresh every 24h for active supported leagues
 - live odds auto-sync is intentionally opt-in and disabled by default in config
 - no new database migration is required for Stage 8
 

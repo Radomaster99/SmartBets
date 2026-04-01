@@ -1361,6 +1361,12 @@ Behavior:
 - otherwise teams are resolved locally from fixtures first, standings second
 - this is intentionally quota-aware for the 5000 requests/day limit
 
+Automation note:
+- this endpoint is not manual-only anymore
+- `POST /api/preload/run` now also runs `TeamAnalyticsService.SyncStatisticsAsync(...)` for active supported leagues after the core teams/fixtures/standings steps
+- the internal background worker also runs a quota-aware daily refresh for `team_statistics` on active supported leagues
+- frontend pages that read `GET /api/teams/{apiTeamId}/statistics` or `GET /api/teams/{apiTeamId}/form` can now populate automatically once preload or the scheduler has run
+
 #### `GET /api/teams/{apiTeamId}/statistics?leagueId=&season=`
 
 Purpose:
@@ -1993,6 +1999,10 @@ Current sample config in `appsettings.json`:
   "PostFinishLookbackHours": 3,
   "MaxPostFinishRefreshes": 2,
   "MaxMatchCenterFixtures": 6,
+  "EnableTeamStatisticsAutoSync": true,
+  "TeamStatisticsIntervalHours": 24,
+  "MaxTeamStatisticsLeaguesPerCycle": 6,
+  "TeamStatisticsMaxTeamsPerLeague": 25,
   "EnableLiveOddsAutoSync": false,
   "AllowAllLiveOddsMarkets": false,
   "LiveOddsIntervalSeconds": 120,
@@ -2010,6 +2020,9 @@ Meaning of the important keys:
 - `LiveStatusIntervalSeconds` controls the cheap live heartbeat
 - `MatchCenterIntervalSeconds` controls the heavier batch `fixtures?ids=...` refresh
 - `PlayersIntervalSeconds` slows down player stats refreshes
+- `EnableTeamStatisticsAutoSync` enables daily background refresh for stored team statistics
+- `TeamStatisticsIntervalHours` controls how often supported leagues are revisited for `team_statistics`
+- `MaxTeamStatisticsLeaguesPerCycle` caps how many supported leagues are refreshed in one daily sweep
 - `EnableLiveOddsAutoSync` enables automatic `/odds/live` imports
 - `LiveOddsBetIds` should contain only the live bet ids you actually need
 
@@ -2038,7 +2051,7 @@ There is also a short grace window after kickoff:
 
 ### 27.4 What The Worker Calls
 
-When active, the worker can call these sync services:
+The worker can call these sync services:
 
 1. Lightweight live heartbeat
 - `FixtureLiveStatusSyncService.SyncLiveFixturesAsync(...)`
@@ -2050,11 +2063,17 @@ When active, the worker can call these sync services:
 - uses batched `fixtures?ids=...`
 - refreshes events, statistics, lineups and optionally players
 
-3. Live bet types
+3. Team statistics refresh
+- `TeamAnalyticsService.SyncStatisticsAsync(...)`
+- runs on a much longer interval than live refreshes
+- targets active `supported_leagues`
+- keeps `team_statistics` warm for frontend team pages without needing a manual admin call
+
+4. Live bet types
 - `LiveOddsService.SyncLiveBetTypesAsync(...)`
 - runs on a long interval, mainly to keep live bet ids current
 
-4. Live odds
+5. Live odds
 - `LiveOddsService.SyncLiveOddsAsync(...)`
 - only runs when `EnableLiveOddsAutoSync=true`
 - only runs for live leagues
@@ -2066,6 +2085,7 @@ The default behavior is intentionally conservative:
 - live status every 30 seconds
 - match-center every 60 seconds
 - player statistics every 180 seconds
+- team statistics every 24 hours for active supported leagues
 - players only when live fixture count is small
 - live odds auto-sync off by default
 

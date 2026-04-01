@@ -17,6 +17,10 @@ public class LiveAutomationOptions
     public int PostFinishLookbackHours { get; set; } = 3;
     public int MaxPostFinishRefreshes { get; set; } = 2;
     public int MaxMatchCenterFixtures { get; set; } = 6;
+    public bool EnableTeamStatisticsAutoSync { get; set; } = true;
+    public int TeamStatisticsIntervalHours { get; set; } = 24;
+    public int MaxTeamStatisticsLeaguesPerCycle { get; set; } = 6;
+    public int TeamStatisticsMaxTeamsPerLeague { get; set; } = 25;
     public bool EnableLiveOddsAutoSync { get; set; } = false;
     public bool AllowAllLiveOddsMarkets { get; set; } = false;
     public int LiveOddsIntervalSeconds { get; set; } = 120;
@@ -87,6 +91,21 @@ public class LiveAutomationOptions
     public int GetMaxMatchCenterFixtures()
     {
         return Math.Clamp(MaxMatchCenterFixtures, 1, 20);
+    }
+
+    public TimeSpan GetTeamStatisticsInterval()
+    {
+        return TimeSpan.FromHours(Math.Clamp(TeamStatisticsIntervalHours, 6, 72));
+    }
+
+    public int GetMaxTeamStatisticsLeaguesPerCycle()
+    {
+        return Math.Clamp(MaxTeamStatisticsLeaguesPerCycle, 1, 20);
+    }
+
+    public int GetTeamStatisticsMaxTeamsPerLeague()
+    {
+        return Math.Clamp(TeamStatisticsMaxTeamsPerLeague, 1, 40);
     }
 
     public int GetMaxFixturesForPlayers()

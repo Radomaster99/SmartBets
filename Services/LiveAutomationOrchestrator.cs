@@ -8,9 +8,11 @@ namespace SmartBets.Services;
 public class LiveAutomationOrchestrator
 {
     private readonly AppDbContext _dbContext;
+    private readonly TeamAnalyticsService _teamAnalyticsService;
     private readonly FixtureLiveStatusSyncService _fixtureLiveStatusSyncService;
     private readonly FixtureMatchCenterSyncService _fixtureMatchCenterSyncService;
     private readonly LiveOddsService _liveOddsService;
+    private readonly SyncErrorService _syncErrorService;
     private readonly IConfiguration _configuration;
     private readonly IOptionsMonitor<LiveAutomationOptions> _optionsMonitor;
     private readonly IOptionsMonitor<ApiFootballClientOptions> _apiFootballClientOptions;
@@ -19,9 +21,11 @@ public class LiveAutomationOrchestrator
 
     public LiveAutomationOrchestrator(
         AppDbContext dbContext,
+        TeamAnalyticsService teamAnalyticsService,
         FixtureLiveStatusSyncService fixtureLiveStatusSyncService,
         FixtureMatchCenterSyncService fixtureMatchCenterSyncService,
         LiveOddsService liveOddsService,
+        SyncErrorService syncErrorService,
         IConfiguration configuration,
         IOptionsMonitor<LiveAutomationOptions> optionsMonitor,
         IOptionsMonitor<ApiFootballClientOptions> apiFootballClientOptions,
@@ -29,9 +33,11 @@ public class LiveAutomationOrchestrator
         ILogger<LiveAutomationOrchestrator> logger)
     {
         _dbContext = dbContext;
+        _teamAnalyticsService = teamAnalyticsService;
         _fixtureLiveStatusSyncService = fixtureLiveStatusSyncService;
         _fixtureMatchCenterSyncService = fixtureMatchCenterSyncService;
         _liveOddsService = liveOddsService;
+        _syncErrorService = syncErrorService;
         _configuration = configuration;
         _optionsMonitor = optionsMonitor;
         _apiFootballClientOptions = apiFootballClientOptions;
@@ -44,6 +50,7 @@ public class LiveAutomationOrchestrator
         CancellationToken cancellationToken)
     {
         var options = _optionsMonitor.CurrentValue;
+        var actions = new List<string>();
 
         if (!options.Enabled)
         {
@@ -71,15 +78,33 @@ public class LiveAutomationOrchestrator
                 "no_active_supported_leagues");
         }
 
+        if (options.EnableTeamStatisticsAutoSync &&
+            IsDue(state.LastTeamStatisticsRunUtc, DateTime.UtcNow, options.GetTeamStatisticsInterval()))
+        {
+            var syncedLeagueKeys = await SyncSupportedLeagueTeamStatisticsAsync(options, cancellationToken);
+            state.LastTeamStatisticsRunUtc = DateTime.UtcNow;
+
+            if (syncedLeagueKeys.Count > 0)
+            {
+                actions.Add($"team-statistics:{string.Join(',', syncedLeagueKeys)}");
+            }
+        }
+
         if (!snapshot.ShouldUseActiveMode)
         {
+            if (actions.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Live automation idle cycle completed with background actions. Actions={Actions}",
+                    string.Join(" | ", actions));
+            }
+
             return LiveAutomationCycleResult.Idle(
                 options.GetIdleInterval(),
                 snapshot,
                 "no_live_or_near_kickoff_fixtures");
         }
 
-        var actions = new List<string>();
         var nowUtc = DateTime.UtcNow;
         var quotaSnapshot = _quotaTelemetryService.GetSnapshot(_apiFootballClientOptions.CurrentValue);
         var allowPlayers = quotaSnapshot.Mode == ApiFootballQuotaMode.Normal;
@@ -156,6 +181,93 @@ public class LiveAutomationOrchestrator
         }
 
         return LiveAutomationCycleResult.Active(options.GetActiveInterval(), snapshot, actions);
+    }
+
+    private async Task<IReadOnlyList<string>> SyncSupportedLeagueTeamStatisticsAsync(
+        LiveAutomationOptions options,
+        CancellationToken cancellationToken)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var activeSupportedLeagues = await _dbContext.SupportedLeagues
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Priority)
+            .ThenBy(x => x.LeagueApiId)
+            .ToListAsync(cancellationToken);
+
+        if (activeSupportedLeagues.Count == 0)
+            return Array.Empty<string>();
+
+        var teamStatisticsStates = await _dbContext.SyncStates
+            .AsNoTracking()
+            .Where(x => x.EntityType == "team_statistics")
+            .ToListAsync(cancellationToken);
+
+        var lastSyncedLookup = teamStatisticsStates.ToDictionary(
+            x => BuildLeagueSeasonKey(x.LeagueApiId ?? 0, x.Season ?? 0),
+            x => x.LastSyncedAt,
+            StringComparer.Ordinal);
+
+        var dueLeagues = activeSupportedLeagues
+            .Where(x =>
+            {
+                var key = BuildLeagueSeasonKey(x.LeagueApiId, x.Season);
+                return !lastSyncedLookup.TryGetValue(key, out var lastSyncedAt) ||
+                       nowUtc - lastSyncedAt >= options.GetTeamStatisticsInterval();
+            })
+            .OrderBy(x =>
+            {
+                var key = BuildLeagueSeasonKey(x.LeagueApiId, x.Season);
+                return lastSyncedLookup.TryGetValue(key, out var lastSyncedAt)
+                    ? lastSyncedAt
+                    : DateTime.MinValue;
+            })
+            .ThenBy(x => x.Priority)
+            .ThenBy(x => x.LeagueApiId)
+            .Take(options.GetMaxTeamStatisticsLeaguesPerCycle())
+            .ToList();
+
+        if (dueLeagues.Count == 0)
+            return Array.Empty<string>();
+
+        var syncedLeagueKeys = new List<string>();
+
+        foreach (var supportedLeague in dueLeagues)
+        {
+            try
+            {
+                var result = await _teamAnalyticsService.SyncStatisticsAsync(
+                    supportedLeague.LeagueApiId,
+                    supportedLeague.Season,
+                    maxTeams: options.GetTeamStatisticsMaxTeamsPerLeague(),
+                    force: false,
+                    cancellationToken: cancellationToken);
+
+                if (result.TeamsSynced > 0 || result.TeamsSkippedFresh > 0)
+                {
+                    syncedLeagueKeys.Add($"{supportedLeague.LeagueApiId}:{supportedLeague.Season}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Automatic team statistics sync failed for league {LeagueApiId}, season {Season}.",
+                    supportedLeague.LeagueApiId,
+                    supportedLeague.Season);
+
+                await _syncErrorService.RecordAsync(
+                    "team_statistics",
+                    "background_sync",
+                    "live_automation",
+                    ex.Message,
+                    supportedLeague.LeagueApiId,
+                    supportedLeague.Season,
+                    cancellationToken);
+            }
+        }
+
+        return syncedLeagueKeys;
     }
 
     private async Task<LiveAutomationSnapshot> BuildSnapshotAsync(
@@ -340,6 +452,7 @@ public sealed class LiveAutomationWorkerState
     public DateTime? LastLiveStatusRunUtc { get; set; }
     public DateTime? LastMatchCenterRunUtc { get; set; }
     public DateTime? LastPlayersRunUtc { get; set; }
+    public DateTime? LastTeamStatisticsRunUtc { get; set; }
     public DateTime? LastLiveBetTypesRunUtc { get; set; }
     public Dictionary<long, DateTime> LastLiveOddsRunByLeagueApiId { get; } = new();
 }

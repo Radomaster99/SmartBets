@@ -22,6 +22,10 @@ public class PreloadSyncLeagueResult
     public int StandingsUpdated { get; set; }
     public int StandingsSkippedMissingTeams { get; set; }
 
+    public int TeamStatisticsTeamsConsidered { get; set; }
+    public int TeamStatisticsTeamsSynced { get; set; }
+    public int TeamStatisticsTeamsSkippedFresh { get; set; }
+
     public List<string> SkippedFeatures { get; set; } = new();
     public string Status { get; set; } = "Success";
     public string? Error { get; set; }
@@ -52,6 +56,7 @@ public class PreloadSyncService
     private readonly CountrySyncService _countrySyncService;
     private readonly LeagueSyncService _leagueSyncService;
     private readonly TeamSyncService _teamSyncService;
+    private readonly TeamAnalyticsService _teamAnalyticsService;
     private readonly FixtureSyncService _fixtureSyncService;
     private readonly StandingsSyncService _standingsSyncService;
     private readonly LeagueCoverageService _leagueCoverageService;
@@ -63,6 +68,7 @@ public class PreloadSyncService
         CountrySyncService countrySyncService,
         LeagueSyncService leagueSyncService,
         TeamSyncService teamSyncService,
+        TeamAnalyticsService teamAnalyticsService,
         FixtureSyncService fixtureSyncService,
         StandingsSyncService standingsSyncService,
         LeagueCoverageService leagueCoverageService,
@@ -73,6 +79,7 @@ public class PreloadSyncService
         _countrySyncService = countrySyncService;
         _leagueSyncService = leagueSyncService;
         _teamSyncService = teamSyncService;
+        _teamAnalyticsService = teamAnalyticsService;
         _fixtureSyncService = fixtureSyncService;
         _standingsSyncService = standingsSyncService;
         _leagueCoverageService = leagueCoverageService;
@@ -266,6 +273,33 @@ public class PreloadSyncService
                     leagueResult.StandingsSkippedMissingTeams = standingsResult.SkippedMissingTeams;
 
                     RegisterSync("standings", supportedLeague.LeagueApiId, supportedLeague.Season);
+                }
+
+                if (coverage is not null && !coverage.HasFixtures)
+                {
+                    leagueResult.SkippedFeatures.Add("team_statistics");
+                }
+                else if (!ShouldSync("team_statistics", supportedLeague.LeagueApiId, supportedLeague.Season))
+                {
+                    leagueResult.SkippedFeatures.Add("team_statistics_recently_synced");
+                }
+                else
+                {
+                    var teamStatisticsResult = await _teamAnalyticsService.SyncStatisticsAsync(
+                        supportedLeague.LeagueApiId,
+                        supportedLeague.Season,
+                        maxTeams: 25,
+                        force: options.Force,
+                        cancellationToken: cancellationToken);
+
+                    leagueResult.TeamStatisticsTeamsConsidered = teamStatisticsResult.TeamsConsidered;
+                    leagueResult.TeamStatisticsTeamsSynced = teamStatisticsResult.TeamsSynced;
+                    leagueResult.TeamStatisticsTeamsSkippedFresh = teamStatisticsResult.TeamsSkippedFresh;
+
+                    if (teamStatisticsResult.TeamsSynced > 0)
+                    {
+                        RegisterSync("team_statistics", supportedLeague.LeagueApiId, supportedLeague.Season);
+                    }
                 }
 
                 leagueResult.Status = "Success";
