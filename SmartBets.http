@@ -13,6 +13,18 @@ X-API-KEY: {{ApiKey}}
 POST {{SmartBets_HostAddress}}/api/leagues/sync
 X-API-KEY: {{ApiKey}}
 
+### Preload all active supported leagues
+POST {{SmartBets_HostAddress}}/api/preload/run
+X-API-KEY: {{ApiKey}}
+
+### Preload one season in small batch, skipping recently synced features
+POST {{SmartBets_HostAddress}}/api/preload/run?season=2025&maxLeagues=5&minMinutesSinceLastSync=180&stopOnRateLimit=true
+X-API-KEY: {{ApiKey}}
+
+### Force preload one season in small batch
+POST {{SmartBets_HostAddress}}/api/preload/run?season=2025&maxLeagues=5&force=true&minMinutesSinceLastSync=0
+X-API-KEY: {{ApiKey}}
+
 ### Teams sync for one league-season
 POST {{SmartBets_HostAddress}}/api/teams/sync?leagueId=39&season=2025
 X-API-KEY: {{ApiKey}}

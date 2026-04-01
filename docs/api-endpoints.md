@@ -696,6 +696,13 @@ Base route:
 
 ### 12.1 `POST /api/preload/run`
 
+Query parameters:
+- `season` - optional
+- `maxLeagues` - optional
+- `force` - optional, default `false`
+- `stopOnRateLimit` - optional, default `true`
+- `minMinutesSinceLastSync` - optional, default `180`
+
 Предназначение:
 - bootstrap/warm-up endpoint за предварително зареждане на системата
 
@@ -719,6 +726,8 @@ Base route:
 - `CountriesSynced`
 - `LeaguesSynced`
 - `SupportedLeaguesCount`
+- `StoppedEarly`
+- `StopReason`
 - `Leagues`
 
 Всяка entry в `Leagues` съдържа:
