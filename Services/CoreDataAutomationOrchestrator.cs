@@ -217,6 +217,8 @@ public class CoreDataAutomationOrchestrator
         CancellationToken cancellationToken)
     {
         var forceCatalogRefresh = _coreLeagueCatalogState.GetTargets().Count == 0;
+        var minimumAutomationSeason = nowUtc.Year - options.GetAutomationSeasonLookbackYears();
+        var maximumAutomationSeason = nowUtc.Year + options.GetAutomationSeasonLookaheadYears();
         var dueActions = new Queue<string>();
 
         if (forceCatalogRefresh || shouldSync("countries", null, null, options.GetCatalogRefreshInterval()))
@@ -258,6 +260,8 @@ public class CoreDataAutomationOrchestrator
 
         var result = await _catalogRefreshJobService.RunAsync(
             nowUtc,
+            minimumAutomationSeason,
+            maximumAutomationSeason,
             refreshCountries: selected.Contains("countries"),
             refreshLeagues: selected.Contains("leagues"),
             refreshCurrentLeagues: selected.Contains("leagues_current"),

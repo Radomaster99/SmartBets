@@ -160,9 +160,15 @@ public class PreloadSyncService
             result.LeaguesSynced = true;
         }
 
-        if (ShouldSync("leagues_current", null, null))
+        var forceCurrentTargetsRefresh = _coreLeagueCatalogState.GetTargets().Count == 0;
+
+        if (forceCurrentTargetsRefresh || ShouldSync("leagues_current", null, null))
         {
-            var currentTargets = await _leagueSyncService.SyncCurrentLeaguesAsync(cancellationToken);
+            var currentYear = nowUtc.Year;
+            var currentTargets = await _leagueSyncService.SyncCurrentLeaguesAsync(
+                currentYear - 1,
+                currentYear + 1,
+                cancellationToken);
             _coreLeagueCatalogState.ReplaceTargets(currentTargets, nowUtc);
             RegisterSync("leagues_current", null, null);
         }

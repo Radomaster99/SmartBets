@@ -751,6 +751,47 @@ Stage 10 note:
 - `StopReason`
 - `Leagues`
 
+### 12.2 `POST /api/preload/historical`
+
+Purpose:
+- manual bootstrap for historical league-seasons starting from `2023+`
+- meant for one-off or rare backfills
+- not part of the ongoing background automation loop
+
+Query parameters:
+- `fromSeason` - optional, default `2023`
+- `toSeason` - optional, default `currentYear`
+- `maxLeagueSeasons` - optional
+- `force` - optional, default `false`
+- `stopOnRateLimit` - optional, default `true`
+- `minMinutesSinceLastSync` - optional, default `1440`
+- `includeOdds` - optional, default `false`
+- `excludeAutomationWindow` - optional, default `true`
+
+Behavior:
+- always refreshes:
+  - countries
+  - leagues
+  - bookmaker reference catalog
+- then selects local league-seasons in the requested historical range
+- by default excludes the active automation window, so the background worker and the historical import do not overlap
+- syncs:
+  - teams
+  - full fixtures
+  - optional pre-match odds
+- does not automatically sync:
+  - standings
+  - team statistics
+  - match-center data
+  - preview data
+
+Recommended usage:
+- keep ongoing automation focused on current seasons
+- use this endpoint only when you want to backfill or repair older seasons such as `2023` and `2024`
+
+Response:
+- `HistoricalBootstrapResult`
+
 Всяка entry в `Leagues` съдържа:
 - `LeagueApiId`
 - `Season`
@@ -2426,3 +2467,28 @@ The following flows still exist, but are no longer automatically refreshed by th
 - standings auto-refresh
 
 They are still available through their current endpoints and can still be called manually.
+
+### 29.9 Automation Window And Historical Seasons
+
+The best-fit production model is now split into two layers:
+
+1. Ongoing automation
+- tracks only the active automation window
+- default window:
+  - `currentYear - 1`
+  - `currentYear`
+  - `currentYear + 1`
+- this window is controlled through:
+  - `CoreDataAutomation.AutomationSeasonLookbackYears`
+  - `CoreDataAutomation.AutomationSeasonLookaheadYears`
+
+2. Historical bootstrap
+- handles older seasons starting from `2023+`
+- is triggered manually through:
+  - `POST /api/preload/historical`
+- is not part of the recurring background worker
+
+This means:
+- older seasons still exist in the database
+- older seasons can still be imported on demand
+- older seasons are not continuously re-polled by the automatic jobs

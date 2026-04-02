@@ -21,6 +21,8 @@ public class CoreAutomationCatalogRefreshJobService
 
     public async Task<CoreAutomationCatalogRefreshJobResult> RunAsync(
         DateTime nowUtc,
+        int minimumAutomationSeason,
+        int maximumAutomationSeason,
         bool refreshCountries,
         bool refreshLeagues,
         bool refreshCurrentLeagues,
@@ -48,7 +50,10 @@ public class CoreAutomationCatalogRefreshJobService
 
         if (refreshCurrentLeagues)
         {
-            var currentTargets = await _leagueSyncService.SyncCurrentLeaguesAsync(cancellationToken);
+            var currentTargets = await _leagueSyncService.SyncCurrentLeaguesAsync(
+                minimumAutomationSeason,
+                maximumAutomationSeason,
+                cancellationToken);
             if (currentTargets.Count > 0)
             {
                 _coreLeagueCatalogState.ReplaceTargets(currentTargets, nowUtc);

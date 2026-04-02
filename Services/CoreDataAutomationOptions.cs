@@ -14,6 +14,8 @@ public class CoreDataAutomationOptions
     public int ActiveIntervalSeconds { get; set; } = 30;
     public int IdleIntervalSeconds { get; set; } = 120;
     public int ErrorRetrySeconds { get; set; } = 120;
+    public int AutomationSeasonLookbackYears { get; set; } = 1;
+    public int AutomationSeasonLookaheadYears { get; set; } = 1;
     public int CatalogRefreshHours { get; set; } = 24;
     public int BookmakersReferenceRefreshHours { get; set; } = 24;
     public int LiveStatusIntervalSeconds { get; set; } = 30;
@@ -59,6 +61,8 @@ public class CoreDataAutomationOptions
     public TimeSpan GetLiveOddsInterval() => TimeSpan.FromSeconds(Math.Clamp(LiveOddsIntervalSeconds, 30, 300));
     public TimeSpan GetLiveBetTypesRefreshInterval() => TimeSpan.FromHours(Math.Clamp(LiveBetTypesRefreshHours, 1, 168));
     public TimeSpan GetRepairInterval() => TimeSpan.FromHours(Math.Clamp(RepairIntervalHours, 1, 24));
+    public int GetAutomationSeasonLookbackYears() => Math.Clamp(AutomationSeasonLookbackYears, 0, 5);
+    public int GetAutomationSeasonLookaheadYears() => Math.Clamp(AutomationSeasonLookaheadYears, 0, 3);
 
     public int GetMaxTeamLeagueSeasonsPerCycle() => Math.Clamp(MaxTeamLeagueSeasonsPerCycle, 1, 50);
     public int GetMaxBaselineFixtureLeagueSeasonsPerCycle() => Math.Clamp(MaxBaselineFixtureLeagueSeasonsPerCycle, 1, 50);

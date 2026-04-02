@@ -164,3 +164,13 @@ Stage 10 core-data automation refactor:
 - quota defaults are now tuned for a 70 000/day plan, with early degradation before the hard limit:
   - `LowDailyRemainingThreshold = 10000`
   - `CriticalDailyRemainingThreshold = 2500`
+
+Stage 11 automation window + historical bootstrap split:
+- ongoing background automation now tracks only the current automation window:
+  - `currentYear - 1`
+  - `currentYear`
+  - `currentYear + 1`
+- older seasons are no longer re-polled automatically
+- historical data from `2023+` is imported through:
+  - `POST /api/preload/historical`
+- the historical bootstrap can optionally exclude the active automation window, so old seasons are filled once and then left frozen unless you request another manual refresh

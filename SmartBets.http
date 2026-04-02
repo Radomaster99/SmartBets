@@ -25,6 +25,14 @@ X-API-KEY: {{ApiKey}}
 POST {{SmartBets_HostAddress}}/api/preload/run?season=2025&maxLeagues=5&includeOdds=true&stopOnRateLimit=true
 X-API-KEY: {{ApiKey}}
 
+### Historical bootstrap for frozen seasons, excluding the automation window
+POST {{SmartBets_HostAddress}}/api/preload/historical?fromSeason=2023&toSeason=2024&maxLeagueSeasons=20&includeOdds=false&excludeAutomationWindow=true
+X-API-KEY: {{ApiKey}}
+
+### Historical bootstrap with pre-match odds snapshots
+POST {{SmartBets_HostAddress}}/api/preload/historical?fromSeason=2023&toSeason=2024&maxLeagueSeasons=10&includeOdds=true&force=false
+X-API-KEY: {{ApiKey}}
+
 ### Force preload one season in small batch
 POST {{SmartBets_HostAddress}}/api/preload/run?season=2025&maxLeagues=5&force=true&minMinutesSinceLastSync=0
 X-API-KEY: {{ApiKey}}

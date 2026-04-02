@@ -25,15 +25,33 @@ public class LeagueSyncService
     public async Task<IReadOnlyList<CoreLeagueSeasonTarget>> SyncCurrentLeaguesAsync(
         CancellationToken cancellationToken = default)
     {
+        return await SyncCurrentLeaguesAsync(
+            DateTime.UtcNow.Year - 1,
+            DateTime.UtcNow.Year + 1,
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CoreLeagueSeasonTarget>> SyncCurrentLeaguesAsync(
+        int minimumCurrentSeason,
+        int maximumCurrentSeason,
+        CancellationToken cancellationToken = default)
+    {
         var apiLeagues = await _apiService.GetCurrentLeaguesAsync(cancellationToken);
-        var result = await SyncLeaguesInternalAsync(apiLeagues, includeTargets: true, cancellationToken);
+        var result = await SyncLeaguesInternalAsync(
+            apiLeagues,
+            includeTargets: true,
+            cancellationToken,
+            minimumCurrentSeason,
+            maximumCurrentSeason);
         return result.Targets;
     }
 
     private async Task<LeagueSyncExecutionResult> SyncLeaguesInternalAsync(
         IReadOnlyCollection<Models.ApiFootball.ApiFootballLeagueItem> apiLeagues,
         bool includeTargets,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? minimumCurrentSeason = null,
+        int? maximumCurrentSeason = null)
     {
         var countries = await _dbContext.Countries.ToListAsync(cancellationToken);
         var countriesByName = countries.ToDictionary(x => x.Name.ToLowerInvariant());
@@ -122,6 +140,12 @@ public class LeagueSyncService
                     continue;
 
                 if (!season.Current)
+                    continue;
+
+                if (minimumCurrentSeason.HasValue && season.Year < minimumCurrentSeason.Value)
+                    continue;
+
+                if (maximumCurrentSeason.HasValue && season.Year > maximumCurrentSeason.Value)
                     continue;
 
                 targets[key] = new CoreLeagueSeasonTarget

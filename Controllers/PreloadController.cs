@@ -8,10 +8,14 @@ namespace SmartBets.Controllers;
 public class PreloadController : ControllerBase
 {
     private readonly PreloadSyncService _preloadSyncService;
+    private readonly HistoricalBootstrapService _historicalBootstrapService;
 
-    public PreloadController(PreloadSyncService preloadSyncService)
+    public PreloadController(
+        PreloadSyncService preloadSyncService,
+        HistoricalBootstrapService historicalBootstrapService)
     {
         _preloadSyncService = preloadSyncService;
+        _historicalBootstrapService = historicalBootstrapService;
     }
 
     [HttpPost("run")]
@@ -39,6 +43,44 @@ public class PreloadController : ControllerBase
                 StopOnRateLimit = stopOnRateLimit,
                 MinMinutesSinceLastSync = minMinutesSinceLastSync,
                 IncludeOdds = includeOdds
+            },
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("historical")]
+    public async Task<IActionResult> RunHistorical(
+        [FromQuery] int fromSeason = 2023,
+        [FromQuery] int? toSeason = null,
+        [FromQuery] int? maxLeagueSeasons = null,
+        [FromQuery] bool force = false,
+        [FromQuery] bool stopOnRateLimit = true,
+        [FromQuery] int minMinutesSinceLastSync = 1440,
+        [FromQuery] bool includeOdds = false,
+        [FromQuery] bool excludeAutomationWindow = true,
+        CancellationToken cancellationToken = default)
+    {
+        if (toSeason.HasValue && toSeason.Value < fromSeason)
+            return BadRequest("toSeason must be greater than or equal to fromSeason.");
+
+        if (maxLeagueSeasons.HasValue && maxLeagueSeasons.Value <= 0)
+            return BadRequest("maxLeagueSeasons must be greater than 0.");
+
+        if (minMinutesSinceLastSync < 0)
+            return BadRequest("minMinutesSinceLastSync cannot be negative.");
+
+        var result = await _historicalBootstrapService.RunAsync(
+            new HistoricalBootstrapRunOptions
+            {
+                FromSeason = fromSeason,
+                ToSeason = toSeason,
+                MaxLeagueSeasons = maxLeagueSeasons,
+                Force = force,
+                StopOnRateLimit = stopOnRateLimit,
+                MinMinutesSinceLastSync = minMinutesSinceLastSync,
+                IncludeOdds = includeOdds,
+                ExcludeAutomationWindow = excludeAutomationWindow
             },
             cancellationToken);
 

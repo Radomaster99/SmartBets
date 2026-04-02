@@ -84,6 +84,7 @@ builder.Services.AddScoped<DiscoveryService>();
 builder.Services.AddScoped<SyncErrorService>();
 builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
+builder.Services.AddScoped<HistoricalBootstrapService>();
 builder.Services.AddScoped<StandingsSyncService>();
 builder.Services.AddScoped<LiveAutomationOrchestrator>();
 builder.Services.AddScoped<CoreDataAutomationOrchestrator>();
