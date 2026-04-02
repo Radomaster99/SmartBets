@@ -24,6 +24,31 @@ public class BookmakersController : ControllerBase
         _syncStateService = syncStateService;
     }
 
+    [HttpPost("sync-reference")]
+    public async Task<IActionResult> SyncReference(CancellationToken cancellationToken)
+    {
+        var result = await _syncService.SyncReferenceBookmakersAsync(cancellationToken);
+        var syncedAtUtc = DateTime.UtcNow;
+
+        await _syncStateService.SetLastSyncedAtAsync(
+            "bookmakers_reference",
+            null,
+            null,
+            syncedAtUtc,
+            cancellationToken);
+
+        return Ok(new
+        {
+            Message = "Bookmakers refreshed from API-Football reference endpoint successfully.",
+            LastSyncedAtUtc = syncedAtUtc,
+            result.Source,
+            result.RemoteCallsMade,
+            result.Processed,
+            result.Inserted,
+            result.Updated
+        });
+    }
+
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(
         [FromQuery] long leagueId,

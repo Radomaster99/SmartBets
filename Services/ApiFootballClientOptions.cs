@@ -13,8 +13,8 @@ public class ApiFootballClientOptions
     public int GetMinRequestSpacingMs() => Math.Clamp(MinRequestSpacingMs, 0, 5000);
     public int GetLowMinuteRemainingThreshold() => Math.Clamp(LowMinuteRemainingThreshold, 1, 100);
     public int GetCriticalMinuteRemainingThreshold() => Math.Clamp(CriticalMinuteRemainingThreshold, 1, 50);
-    public int GetLowDailyRemainingThreshold() => Math.Clamp(LowDailyRemainingThreshold, 1, 5000);
-    public int GetCriticalDailyRemainingThreshold() => Math.Clamp(CriticalDailyRemainingThreshold, 1, 2000);
+    public int GetLowDailyRemainingThreshold() => Math.Clamp(LowDailyRemainingThreshold, 1, 70000);
+    public int GetCriticalDailyRemainingThreshold() => Math.Clamp(CriticalDailyRemainingThreshold, 1, 70000);
     public int GetLowQuotaDelayMs() => Math.Clamp(LowQuotaDelayMs, 0, 10000);
     public int GetCriticalQuotaDelayMs() => Math.Clamp(CriticalQuotaDelayMs, 0, 15000);
 }

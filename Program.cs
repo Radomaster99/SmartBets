@@ -56,9 +56,12 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // HTTP client
 builder.Services.AddHttpClient<FootballApiService>();
 builder.Services.Configure<LiveAutomationOptions>(builder.Configuration.GetSection("LiveAutomation"));
+builder.Services.Configure<CoreDataAutomationOptions>(builder.Configuration.GetSection("CoreDataAutomation"));
 builder.Services.Configure<ApiFootballClientOptions>(builder.Configuration.GetSection("ApiFootballClient"));
 builder.Services.Configure<DataRetentionOptions>(builder.Configuration.GetSection("DataRetention"));
 builder.Services.AddSingleton<ApiFootballQuotaTelemetryService>();
+builder.Services.AddSingleton<CoreLeagueCatalogState>();
+builder.Services.AddSingleton<CoreAutomationQuotaManager>();
 
 // Services
 builder.Services.AddScoped<CountrySyncService>();
@@ -83,8 +86,15 @@ builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
 builder.Services.AddScoped<StandingsSyncService>();
 builder.Services.AddScoped<LiveAutomationOrchestrator>();
+builder.Services.AddScoped<CoreDataAutomationOrchestrator>();
+builder.Services.AddScoped<CoreAutomationCatalogRefreshJobService>();
+builder.Services.AddScoped<CoreAutomationTeamsRollingJobService>();
+builder.Services.AddScoped<CoreAutomationFixturesRollingJobService>();
+builder.Services.AddScoped<CoreAutomationOddsPreMatchJobService>();
+builder.Services.AddScoped<CoreAutomationOddsLiveJobService>();
+builder.Services.AddScoped<CoreAutomationRepairJobService>();
 builder.Services.AddScoped<DataRetentionService>();
-builder.Services.AddHostedService<LiveAutomationBackgroundService>();
+builder.Services.AddHostedService<CoreDataAutomationBackgroundService>();
 builder.Services.AddHostedService<DataRetentionBackgroundService>();
 
 // CORS

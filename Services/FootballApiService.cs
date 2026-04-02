@@ -129,6 +129,15 @@ public class FootballApiService
 
         return result?.Response ?? new List<ApiFootballLeagueItem>();
     }
+
+    public async Task<List<ApiFootballLeagueItem>> GetCurrentLeaguesAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballLeaguesResponse>(
+            "/leagues?current=true",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballLeagueItem>();
+    }
     public async Task<List<ApiFootballTeamItem>> GetTeamsAsync(long leagueId, int season, CancellationToken cancellationToken = default)
     {
         var baseUrl = _configuration["ApiFootball:BaseUrl"];
@@ -258,6 +267,20 @@ public class FootballApiService
         while (currentPage <= totalPages);
 
         return allItems;
+    }
+
+    public async Task<List<ApiFootballOddsFixtureItem>> GetOddsByFixtureAsync(
+        long fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        if (fixtureId <= 0)
+            return new List<ApiFootballOddsFixtureItem>();
+
+        var result = await SendGetAsync<ApiFootballOddsResponse>(
+            $"/odds?fixture={fixtureId}",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballOddsFixtureItem>();
     }
     public async Task<List<ApiFootballFixtureItem>> GetUpcomingFixturesAsync(
     long leagueId,
@@ -560,6 +583,16 @@ public class FootballApiService
             cancellationToken);
 
         return result?.Response ?? new List<ApiFootballLiveBetTypeItem>();
+    }
+
+    public async Task<List<ApiFootballOddsBookmakerReferenceItem>> GetOddsBookmakersAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SendGetAsync<ApiFootballOddsBookmakersResponse>(
+            "/odds/bookmakers",
+            cancellationToken);
+
+        return result?.Response ?? new List<ApiFootballOddsBookmakerReferenceItem>();
     }
 
     private async Task<T?> SendGetAsync<T>(string relativeUrl, CancellationToken cancellationToken)

@@ -12,17 +12,26 @@ namespace SmartBets.Controllers;
 public class SyncStatusController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
+    private readonly CoreLeagueCatalogState _coreLeagueCatalogState;
     private readonly ApiFootballQuotaTelemetryService _quotaTelemetryService;
     private readonly IOptionsMonitor<ApiFootballClientOptions> _apiFootballClientOptions;
+    private readonly CoreAutomationQuotaManager _coreAutomationQuotaManager;
+    private readonly IOptionsMonitor<CoreDataAutomationOptions> _coreDataAutomationOptions;
 
     public SyncStatusController(
         AppDbContext dbContext,
+        CoreLeagueCatalogState coreLeagueCatalogState,
         ApiFootballQuotaTelemetryService quotaTelemetryService,
-        IOptionsMonitor<ApiFootballClientOptions> apiFootballClientOptions)
+        IOptionsMonitor<ApiFootballClientOptions> apiFootballClientOptions,
+        CoreAutomationQuotaManager coreAutomationQuotaManager,
+        IOptionsMonitor<CoreDataAutomationOptions> coreDataAutomationOptions)
     {
         _dbContext = dbContext;
+        _coreLeagueCatalogState = coreLeagueCatalogState;
         _quotaTelemetryService = quotaTelemetryService;
         _apiFootballClientOptions = apiFootballClientOptions;
+        _coreAutomationQuotaManager = coreAutomationQuotaManager;
+        _coreDataAutomationOptions = coreDataAutomationOptions;
     }
 
     [HttpGet]
@@ -58,12 +67,21 @@ public class SyncStatusController : ControllerBase
             .ThenBy(x => x.LeagueApiId)
             .ToListAsync(cancellationToken);
 
-        var leagueKeys = supportedLeagues
-            .Select(x => new { x.LeagueApiId, x.Season })
+        var supportedLookup = supportedLeagues.ToDictionary(
+            x => $"{x.LeagueApiId}:{x.Season}",
+            x => x,
+            StringComparer.Ordinal);
+
+        var coreTargets = _coreLeagueCatalogState.GetTargets()
+            .Where(x => !season.HasValue || x.Season == season.Value)
             .ToList();
 
-        var leagueIds = leagueKeys.Select(x => x.LeagueApiId).Distinct().ToList();
-        var seasons = leagueKeys.Select(x => x.Season).Distinct().ToList();
+        var targetLeagueKeys = coreTargets.Count > 0
+            ? coreTargets.Select(x => new { x.LeagueApiId, x.Season }).ToList()
+            : supportedLeagues.Select(x => new { x.LeagueApiId, x.Season }).ToList();
+
+        var leagueIds = targetLeagueKeys.Select(x => x.LeagueApiId).Distinct().ToList();
+        var seasons = targetLeagueKeys.Select(x => x.Season).Distinct().ToList();
 
         var leagues = await _dbContext.Leagues
             .AsNoTracking()
@@ -95,15 +113,26 @@ public class SyncStatusController : ControllerBase
             },
             new()
             {
+                EntityType = "leagues_current",
+                LastSyncedAtUtc = GetLastSyncedAt("leagues_current", null, null)
+            },
+            new()
+            {
                 EntityType = "live_bet_types",
                 LastSyncedAtUtc = GetLastSyncedAt("live_bet_types", null, null)
+            },
+            new()
+            {
+                EntityType = "bookmakers_reference",
+                LastSyncedAtUtc = GetLastSyncedAt("bookmakers_reference", null, null)
             }
         };
 
-        var leagueStatuses = supportedLeagues
+        var leagueStatuses = (coreTargets.Count > 0 ? coreTargets.Select(x => new { x.LeagueApiId, x.Season }) : supportedLeagues.Select(x => new { x.LeagueApiId, x.Season }))
             .Select(x =>
             {
                 leagueLookup.TryGetValue($"{x.LeagueApiId}:{x.Season}", out var league);
+                supportedLookup.TryGetValue($"{x.LeagueApiId}:{x.Season}", out var supportedLeague);
 
                 return new LeagueSyncStatusItemDto
                 {
@@ -111,8 +140,8 @@ public class SyncStatusController : ControllerBase
                     Season = x.Season,
                     LeagueName = league?.Name ?? string.Empty,
                     CountryName = league?.Country.Name ?? string.Empty,
-                    IsActive = x.IsActive,
-                    Priority = x.Priority,
+                    IsActive = supportedLeague?.IsActive ?? false,
+                    Priority = supportedLeague?.Priority ?? 0,
                     TeamsLastSyncedAtUtc = GetLastSyncedAt("teams", x.LeagueApiId, x.Season),
                     FixturesLiveLastSyncedAtUtc = GetLastSyncedAt("fixtures_live", x.LeagueApiId, x.Season),
                     FixturesUpcomingLastSyncedAtUtc = GetLastSyncedAt("fixtures_upcoming", x.LeagueApiId, x.Season),
@@ -141,6 +170,7 @@ public class SyncStatusController : ControllerBase
         {
             GeneratedAtUtc = DateTime.UtcNow,
             ApiQuota = MapQuotaStatus(),
+            CoreAutomation = MapCoreAutomationStatus(coreTargets.Count),
             Global = global,
             Leagues = leagueStatuses
         });
@@ -159,6 +189,37 @@ public class SyncStatusController : ControllerBase
             RequestsMinuteLimit = snapshot.RequestsMinuteLimit,
             RequestsMinuteRemaining = snapshot.RequestsMinuteRemaining,
             LastObservedAtUtc = snapshot.LastObservedAtUtc
+        };
+    }
+
+    private CoreAutomationStatusDto MapCoreAutomationStatus(int currentLeagueSeasonCount)
+    {
+        var snapshot = _coreAutomationQuotaManager.GetSnapshot(_coreDataAutomationOptions.CurrentValue);
+
+        return new CoreAutomationStatusDto
+        {
+            CatalogLastRefreshedAtUtc = _coreLeagueCatalogState.GetLastRefreshedAtUtc(),
+            CurrentLeagueSeasonCount = currentLeagueSeasonCount,
+            DailyBudget = snapshot.DailyBudget,
+            UsedToday = snapshot.UsedToday,
+            RemainingToday = snapshot.RemainingToday,
+            Jobs = snapshot.Jobs
+                .Select(x => new CoreAutomationJobStatusDto
+                {
+                    Job = x.Job,
+                    DailyBudget = x.DailyBudget,
+                    UsedToday = x.UsedToday,
+                    RemainingToday = x.RemainingToday,
+                    LastStartedAtUtc = x.LastStartedAtUtc,
+                    LastCompletedAtUtc = x.LastCompletedAtUtc,
+                    LastSkippedAtUtc = x.LastSkippedAtUtc,
+                    LastStatus = x.LastStatus,
+                    LastReason = x.LastReason,
+                    LastDesiredRequests = x.LastDesiredRequests,
+                    LastActualRequests = x.LastActualRequests,
+                    LastProcessedItems = x.LastProcessedItems
+                })
+                .ToList()
         };
     }
 }

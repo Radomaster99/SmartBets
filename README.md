@@ -119,3 +119,48 @@ Stage 9 production hardening:
   - `ApiFootballClient`
   - `DataRetention`
 - no new database migration is required for Stage 9
+
+Stage 10 core-data automation refactor:
+- backend automation now treats SmartBets as a core-data cache for:
+  - countries
+  - leagues
+  - teams
+  - fixtures
+  - pre-match odds
+  - live odds
+  - bookmakers
+- rich match details such as events, lineups, players, injuries, previews and analytics remain available through the existing endpoints, but they are no longer part of the primary automatic refresh pipeline
+- automatic ingestion is no longer gated by `supported_leagues`
+- daily catalog refresh now keeps:
+  - all leagues metadata
+  - current league-season targets for rolling automation
+  - bookmaker reference data from `/odds/bookmakers`
+- new primary config section: `CoreDataAutomation`
+- new primary worker:
+  - `CoreDataAutomationBackgroundService`
+  - `CoreDataAutomationOrchestrator`
+- separate internal core jobs:
+  - `CatalogRefresh`
+  - `TeamsRolling`
+  - `FixturesRolling`
+  - `OddsPreMatch`
+  - `OddsLive`
+  - `Repair`
+- central runtime quota manager:
+  - `CoreAutomationQuotaManager`
+  - per-job daily budgets
+  - per-job last run / skip reason / used budget in `GET /api/sync-status`
+- new automatic refresh strategy:
+  - countries daily
+  - leagues daily
+  - current league targets daily
+  - bookmaker reference daily
+  - teams rolling every 24h per current league-season
+  - full fixtures rolling every 12h per current league-season
+  - hot fixture leagues every 2h
+  - live fixture heartbeat every 30s for all leagues
+  - pre-match odds every 6h / 2h / 30m / 10m depending on kickoff proximity
+  - live odds every 60s for live leagues
+- quota defaults are now tuned for a 70 000/day plan, with early degradation before the hard limit:
+  - `LowDailyRemainingThreshold = 10000`
+  - `CriticalDailyRemainingThreshold = 2500`

@@ -18,14 +18,60 @@ public class BookmakerSyncResult
 public class BookmakerSyncService
 {
     private readonly AppDbContext _dbContext;
+    private readonly FootballApiService _footballApiService;
     private readonly LeagueCoverageService _leagueCoverageService;
 
     public BookmakerSyncService(
         AppDbContext dbContext,
+        FootballApiService footballApiService,
         LeagueCoverageService leagueCoverageService)
     {
         _dbContext = dbContext;
+        _footballApiService = footballApiService;
         _leagueCoverageService = leagueCoverageService;
+    }
+
+    public async Task<BookmakerSyncResult> SyncReferenceBookmakersAsync(CancellationToken cancellationToken = default)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var source = await _footballApiService.GetOddsBookmakersAsync(cancellationToken);
+        var existingBookmakers = await _dbContext.Bookmakers.ToListAsync(cancellationToken);
+        var existingByApiId = existingBookmakers.ToDictionary(x => x.ApiBookmakerId);
+
+        var result = new BookmakerSyncResult
+        {
+            Source = "reference_endpoint",
+            RemoteCallsMade = 1
+        };
+
+        foreach (var item in source)
+        {
+            var normalizedName = item.Name.Trim();
+
+            if (existingByApiId.TryGetValue(item.Id, out var existing))
+            {
+                if (!string.Equals(existing.Name, normalizedName, StringComparison.Ordinal))
+                {
+                    existing.Name = normalizedName;
+                    result.Updated++;
+                }
+            }
+            else
+            {
+                _dbContext.Bookmakers.Add(new Bookmaker
+                {
+                    ApiBookmakerId = item.Id,
+                    Name = normalizedName
+                });
+
+                result.Inserted++;
+            }
+
+            result.Processed++;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return result;
     }
 
     public async Task<BookmakerSyncResult> SyncBookmakersAsync(long leagueId, int season, CancellationToken cancellationToken = default)

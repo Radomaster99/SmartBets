@@ -21,6 +21,7 @@ public class PreloadController : ControllerBase
         [FromQuery] bool force = false,
         [FromQuery] bool stopOnRateLimit = true,
         [FromQuery] int minMinutesSinceLastSync = 180,
+        [FromQuery] bool includeOdds = false,
         CancellationToken cancellationToken = default)
     {
         if (maxLeagues.HasValue && maxLeagues.Value <= 0)
@@ -36,7 +37,8 @@ public class PreloadController : ControllerBase
                 MaxLeagues = maxLeagues,
                 Force = force,
                 StopOnRateLimit = stopOnRateLimit,
-                MinMinutesSinceLastSync = minMinutesSinceLastSync
+                MinMinutesSinceLastSync = minMinutesSinceLastSync,
+                IncludeOdds = includeOdds
             },
             cancellationToken);
 

@@ -13,12 +13,16 @@ X-API-KEY: {{ApiKey}}
 POST {{SmartBets_HostAddress}}/api/leagues/sync
 X-API-KEY: {{ApiKey}}
 
-### Preload all active supported leagues
+### Preload current leagues in core-data mode
 POST {{SmartBets_HostAddress}}/api/preload/run
 X-API-KEY: {{ApiKey}}
 
 ### Preload one season in small batch, skipping recently synced features
 POST {{SmartBets_HostAddress}}/api/preload/run?season=2025&maxLeagues=5&minMinutesSinceLastSync=180&stopOnRateLimit=true
+X-API-KEY: {{ApiKey}}
+
+### Preload one season in core mode including pre-match odds
+POST {{SmartBets_HostAddress}}/api/preload/run?season=2025&maxLeagues=5&includeOdds=true&stopOnRateLimit=true
 X-API-KEY: {{ApiKey}}
 
 ### Force preload one season in small batch
@@ -47,6 +51,10 @@ X-API-KEY: {{ApiKey}}
 
 ### Match winner odds sync for one league-season
 POST {{SmartBets_HostAddress}}/api/odds/sync?leagueId=39&season=2025&marketName=Match%20Winner
+X-API-KEY: {{ApiKey}}
+
+### Sync bookmaker reference catalog from API-Football
+POST {{SmartBets_HostAddress}}/api/bookmakers/sync-reference
 X-API-KEY: {{ApiKey}}
 
 ### Rebuild odds analytics from local snapshots only

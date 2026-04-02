@@ -18,6 +18,7 @@ public class OddsSyncResult
     public int SnapshotsInserted { get; set; }
     public int SnapshotsSkippedUnchanged { get; set; }
     public int SnapshotsSkippedUnsupportedMarket { get; set; }
+    public IReadOnlyList<LeagueSeasonSyncScope> TouchedScopes { get; set; } = Array.Empty<LeagueSeasonSyncScope>();
 }
 
 public class PreMatchOddsService
@@ -61,148 +62,41 @@ public class PreMatchOddsService
                 $"League with apiLeagueId {leagueId} and season {season} was not found in database.");
         }
 
-        var fixtures = await _dbContext.Fixtures
-            .AsNoTracking()
-            .Where(x => x.League.ApiLeagueId == leagueId && x.Season == season)
-            .Select(x => new FixtureReference
-            {
-                Id = x.Id,
-                ApiFixtureId = x.ApiFixtureId,
-                HomeTeamName = x.HomeTeam.Name,
-                AwayTeamName = x.AwayTeam.Name
-            })
-            .ToListAsync(cancellationToken);
-
-        var fixturesByApiId = fixtures.ToDictionary(x => x.ApiFixtureId, x => x);
-        var localFixtureIds = fixtures.Select(x => x.Id).ToList();
-
-        var existingBookmakers = await _dbContext.Bookmakers.ToListAsync(cancellationToken);
-        var bookmakersByApiId = existingBookmakers.ToDictionary(x => x.ApiBookmakerId, x => x);
-
-        var latestOddsSnapshots = await _dbContext.PreMatchOdds
-            .AsNoTracking()
-            .Where(x => localFixtureIds.Contains(x.FixtureId) && x.MarketName == normalizedMarketName)
-            .Select(x => new LatestOddsSnapshot
-            {
-                FixtureId = x.FixtureId,
-                ApiBookmakerId = x.Bookmaker.ApiBookmakerId,
-                MarketName = x.MarketName,
-                HomeOdd = x.HomeOdd,
-                DrawOdd = x.DrawOdd,
-                AwayOdd = x.AwayOdd,
-                CollectedAtUtc = x.CollectedAt
-            })
-            .OrderByDescending(x => x.CollectedAtUtc)
-            .ToListAsync(cancellationToken);
-
-        var latestByKey = latestOddsSnapshots
-            .GroupBy(x => BuildSnapshotKey(x.FixtureId, x.ApiBookmakerId, x.MarketName))
-            .ToDictionary(x => x.Key, x => x.First());
-
         var apiOddsFixtures = await _apiService.GetOddsAsync(leagueId, season, cancellationToken);
-        var collectedAtUtc = DateTime.UtcNow;
-        var touchedFixtureIds = new HashSet<long>();
+        return await SyncOddsCoreAsync(apiOddsFixtures, normalizedMarketName, cancellationToken);
+    }
 
-        var result = new OddsSyncResult
+    public async Task<OddsSyncResult> SyncOddsForFixturesAsync(
+        IReadOnlyCollection<long> apiFixtureIds,
+        string? marketName = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedFixtureIds = apiFixtureIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList();
+
+        var normalizedMarketName = NormalizeMarketName(marketName);
+        if (normalizedFixtureIds.Count == 0)
         {
-            MarketName = normalizedMarketName
-        };
+            return new OddsSyncResult
+            {
+                MarketName = normalizedMarketName
+            };
+        }
 
-        foreach (var fixtureItem in apiOddsFixtures)
+        var apiOddsFixtures = new List<Models.ApiFootball.ApiFootballOddsFixtureItem>();
+
+        foreach (var apiFixtureId in normalizedFixtureIds)
         {
-            if (!fixturesByApiId.TryGetValue(fixtureItem.Fixture.Id, out var fixture))
+            var rows = await _apiService.GetOddsByFixtureAsync(apiFixtureId, cancellationToken);
+            if (rows.Count > 0)
             {
-                result.FixturesMissingInDatabase++;
-                continue;
-            }
-
-            result.FixturesMatched++;
-            touchedFixtureIds.Add(fixture.Id);
-
-            foreach (var apiBookmaker in fixtureItem.Bookmakers)
-            {
-                result.BookmakersProcessed++;
-
-                if (!bookmakersByApiId.TryGetValue(apiBookmaker.Id, out var bookmaker))
-                {
-                    bookmaker = new Bookmaker
-                    {
-                        ApiBookmakerId = apiBookmaker.Id,
-                        Name = apiBookmaker.Name.Trim()
-                    };
-
-                    _dbContext.Bookmakers.Add(bookmaker);
-                    bookmakersByApiId[apiBookmaker.Id] = bookmaker;
-                    result.BookmakersInserted++;
-                }
-                else if (!string.Equals(bookmaker.Name, apiBookmaker.Name.Trim(), StringComparison.Ordinal))
-                {
-                    bookmaker.Name = apiBookmaker.Name.Trim();
-                    result.BookmakersUpdated++;
-                }
-
-                if (!TryExtractThreeWayOdds(
-                        apiBookmaker,
-                        normalizedMarketName,
-                        fixture.HomeTeamName,
-                        fixture.AwayTeamName,
-                        out var homeOdd,
-                        out var drawOdd,
-                        out var awayOdd))
-                {
-                    result.SnapshotsSkippedUnsupportedMarket++;
-                    continue;
-                }
-
-                result.SnapshotsProcessed++;
-
-                var snapshotKey = BuildSnapshotKey(fixture.Id, apiBookmaker.Id, normalizedMarketName);
-                if (latestByKey.TryGetValue(snapshotKey, out var latestSnapshot) &&
-                    latestSnapshot.HomeOdd == homeOdd &&
-                    latestSnapshot.DrawOdd == drawOdd &&
-                    latestSnapshot.AwayOdd == awayOdd)
-                {
-                    result.SnapshotsSkippedUnchanged++;
-                    continue;
-                }
-
-                _dbContext.PreMatchOdds.Add(new PreMatchOdd
-                {
-                    FixtureId = fixture.Id,
-                    Bookmaker = bookmaker,
-                    MarketName = normalizedMarketName,
-                    HomeOdd = homeOdd,
-                    DrawOdd = drawOdd,
-                    AwayOdd = awayOdd,
-                    CollectedAt = collectedAtUtc
-                });
-
-                latestByKey[snapshotKey] = new LatestOddsSnapshot
-                {
-                    FixtureId = fixture.Id,
-                    ApiBookmakerId = apiBookmaker.Id,
-                    MarketName = normalizedMarketName,
-                    HomeOdd = homeOdd,
-                    DrawOdd = drawOdd,
-                    AwayOdd = awayOdd,
-                    CollectedAtUtc = collectedAtUtc
-                };
-
-                result.SnapshotsInserted++;
+                apiOddsFixtures.AddRange(rows);
             }
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        if (touchedFixtureIds.Count > 0)
-        {
-            await _oddsAnalyticsService.RebuildForFixtureIdsAsync(
-                touchedFixtureIds,
-                normalizedMarketName,
-                cancellationToken);
-        }
-
-        return result;
+        return await SyncOddsCoreAsync(apiOddsFixtures, normalizedMarketName, cancellationToken);
     }
 
     public async Task<IReadOnlyList<OddDto>> GetFixtureOddsAsync(
@@ -435,12 +329,195 @@ public class PreMatchOddsService
         return $"{fixtureId}:{apiBookmakerId}:{marketName}".ToUpperInvariant();
     }
 
+    private async Task<OddsSyncResult> SyncOddsCoreAsync(
+        IReadOnlyCollection<Models.ApiFootball.ApiFootballOddsFixtureItem> apiOddsFixtures,
+        string normalizedMarketName,
+        CancellationToken cancellationToken)
+    {
+        var apiFixtureIds = apiOddsFixtures
+            .Select(x => x.Fixture.Id)
+            .Distinct()
+            .ToList();
+
+        var fixtures = await _dbContext.Fixtures
+            .AsNoTracking()
+            .Where(x => apiFixtureIds.Contains(x.ApiFixtureId))
+            .Select(x => new FixtureReference
+            {
+                Id = x.Id,
+                ApiFixtureId = x.ApiFixtureId,
+                HomeTeamName = x.HomeTeam.Name,
+                AwayTeamName = x.AwayTeam.Name,
+                LeagueApiId = x.League.ApiLeagueId,
+                Season = x.Season
+            })
+            .ToListAsync(cancellationToken);
+
+        var fixturesByApiId = fixtures.ToDictionary(x => x.ApiFixtureId, x => x);
+        var localFixtureIds = fixtures.Select(x => x.Id).ToList();
+
+        var existingBookmakers = await _dbContext.Bookmakers.ToListAsync(cancellationToken);
+        var bookmakersByApiId = existingBookmakers.ToDictionary(x => x.ApiBookmakerId, x => x);
+
+        var latestOddsSnapshots = await _dbContext.PreMatchOdds
+            .AsNoTracking()
+            .Where(x => localFixtureIds.Contains(x.FixtureId) && x.MarketName == normalizedMarketName)
+            .Select(x => new LatestOddsSnapshot
+            {
+                FixtureId = x.FixtureId,
+                ApiBookmakerId = x.Bookmaker.ApiBookmakerId,
+                MarketName = x.MarketName,
+                HomeOdd = x.HomeOdd,
+                DrawOdd = x.DrawOdd,
+                AwayOdd = x.AwayOdd,
+                CollectedAtUtc = x.CollectedAt
+            })
+            .OrderByDescending(x => x.CollectedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        var latestByKey = latestOddsSnapshots
+            .GroupBy(x => BuildSnapshotKey(x.FixtureId, x.ApiBookmakerId, x.MarketName))
+            .ToDictionary(x => x.Key, x => x.First());
+
+        var collectedAtUtc = DateTime.UtcNow;
+        var touchedFixtureIds = new HashSet<long>();
+        var touchedScopes = new HashSet<string>(StringComparer.Ordinal);
+
+        var result = new OddsSyncResult
+        {
+            MarketName = normalizedMarketName
+        };
+
+        foreach (var fixtureItem in apiOddsFixtures)
+        {
+            if (!fixturesByApiId.TryGetValue(fixtureItem.Fixture.Id, out var fixture))
+            {
+                result.FixturesMissingInDatabase++;
+                continue;
+            }
+
+            result.FixturesMatched++;
+            touchedFixtureIds.Add(fixture.Id);
+            touchedScopes.Add($"{fixture.LeagueApiId}:{fixture.Season}");
+
+            foreach (var apiBookmaker in fixtureItem.Bookmakers)
+            {
+                result.BookmakersProcessed++;
+
+                if (!bookmakersByApiId.TryGetValue(apiBookmaker.Id, out var bookmaker))
+                {
+                    bookmaker = new Bookmaker
+                    {
+                        ApiBookmakerId = apiBookmaker.Id,
+                        Name = apiBookmaker.Name.Trim()
+                    };
+
+                    _dbContext.Bookmakers.Add(bookmaker);
+                    bookmakersByApiId[apiBookmaker.Id] = bookmaker;
+                    result.BookmakersInserted++;
+                }
+                else if (!string.Equals(bookmaker.Name, apiBookmaker.Name.Trim(), StringComparison.Ordinal))
+                {
+                    bookmaker.Name = apiBookmaker.Name.Trim();
+                    result.BookmakersUpdated++;
+                }
+
+                if (!TryExtractThreeWayOdds(
+                        apiBookmaker,
+                        normalizedMarketName,
+                        fixture.HomeTeamName,
+                        fixture.AwayTeamName,
+                        out var homeOdd,
+                        out var drawOdd,
+                        out var awayOdd))
+                {
+                    result.SnapshotsSkippedUnsupportedMarket++;
+                    continue;
+                }
+
+                result.SnapshotsProcessed++;
+
+                var snapshotKey = BuildSnapshotKey(fixture.Id, apiBookmaker.Id, normalizedMarketName);
+                if (latestByKey.TryGetValue(snapshotKey, out var latestSnapshot) &&
+                    latestSnapshot.HomeOdd == homeOdd &&
+                    latestSnapshot.DrawOdd == drawOdd &&
+                    latestSnapshot.AwayOdd == awayOdd)
+                {
+                    result.SnapshotsSkippedUnchanged++;
+                    continue;
+                }
+
+                _dbContext.PreMatchOdds.Add(new PreMatchOdd
+                {
+                    FixtureId = fixture.Id,
+                    Bookmaker = bookmaker,
+                    MarketName = normalizedMarketName,
+                    HomeOdd = homeOdd,
+                    DrawOdd = drawOdd,
+                    AwayOdd = awayOdd,
+                    CollectedAt = collectedAtUtc
+                });
+
+                latestByKey[snapshotKey] = new LatestOddsSnapshot
+                {
+                    FixtureId = fixture.Id,
+                    ApiBookmakerId = apiBookmaker.Id,
+                    MarketName = normalizedMarketName,
+                    HomeOdd = homeOdd,
+                    DrawOdd = drawOdd,
+                    AwayOdd = awayOdd,
+                    CollectedAtUtc = collectedAtUtc
+                };
+
+                result.SnapshotsInserted++;
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (touchedFixtureIds.Count > 0)
+        {
+            await _oddsAnalyticsService.RebuildForFixtureIdsAsync(
+                touchedFixtureIds,
+                normalizedMarketName,
+                cancellationToken);
+        }
+
+        result.TouchedScopes = touchedScopes
+            .Select(ParseLeagueSeasonSyncScope)
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .OrderBy(x => x.LeagueApiId)
+            .ThenBy(x => x.Season)
+            .ToList();
+
+        return result;
+    }
+
+    private static LeagueSeasonSyncScope? ParseLeagueSeasonSyncScope(string scope)
+    {
+        var parts = scope.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+            return null;
+
+        if (!long.TryParse(parts[0], out var leagueApiId) || !int.TryParse(parts[1], out var season))
+            return null;
+
+        return new LeagueSeasonSyncScope
+        {
+            LeagueApiId = leagueApiId,
+            Season = season
+        };
+    }
+
     private sealed class FixtureReference
     {
         public long Id { get; set; }
         public long ApiFixtureId { get; set; }
         public string HomeTeamName { get; set; } = string.Empty;
         public string AwayTeamName { get; set; } = string.Empty;
+        public long LeagueApiId { get; set; }
+        public int Season { get; set; }
     }
 
     private sealed class LatestOddsSnapshot
@@ -453,4 +530,10 @@ public class PreMatchOddsService
         public decimal? AwayOdd { get; set; }
         public DateTime CollectedAtUtc { get; set; }
     }
+}
+
+public class LeagueSeasonSyncScope
+{
+    public long LeagueApiId { get; set; }
+    public int Season { get; set; }
 }

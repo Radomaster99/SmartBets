@@ -655,6 +655,13 @@ Query параметри:
 - `ApiBookmakerId`
 - `Name`
 
+### 10.3 `POST /api/bookmakers/sync-reference`
+
+Purpose:
+- refreshes the global bookmaker reference catalog directly from API-Football `/odds/bookmakers`
+- updates global sync state `bookmakers_reference`
+- used by the Stage 10 core-data automation worker as the daily bookmaker reference refresh
+
 ## 11. Discovery
 
 Base route:
@@ -702,6 +709,20 @@ Query parameters:
 - `force` - optional, default `false`
 - `stopOnRateLimit` - optional, default `true`
 - `minMinutesSinceLastSync` - optional, default `180`
+- `includeOdds` - optional, default `false`
+
+Stage 10 note:
+- preload now works in core-data mode
+- it bootstraps current league-seasons instead of reading only `supported_leagues`
+- it syncs:
+  - countries
+  - leagues
+  - current league targets
+  - bookmaker reference catalog
+  - teams
+  - full fixtures
+- it does not automatically sync standings or team statistics anymore
+- if `includeOdds=true`, preload also syncs pre-match odds for each processed league-season
 
 Предназначение:
 - bootstrap/warm-up endpoint за предварително зареждане на системата
@@ -2216,3 +2237,192 @@ Response now also includes:
 ### 28.6 Database Apply
 
 No new migration and no new SQL script are required for Stage 9.
+
+## 29. Stage 10: Core-Data Automation Refactor
+
+Stage 10 changes the primary backend role.
+
+The backend is now optimized to automatically cache only the core datasets needed by SmartBets:
+- countries
+- leagues
+- teams
+- fixtures
+- pre-match odds
+- live odds
+- bookmakers
+
+Rich match detail datasets are still supported by the existing endpoints, but they are no longer part of the main automatic refresh pipeline:
+- events
+- lineups
+- player stats
+- injuries
+- predictions
+- previews
+- team analytics
+- league analytics
+
+These remain available as legacy/manual flows.
+
+### 29.1 Primary Automation Model
+
+The old live-only worker is no longer the main operational model.
+
+The new primary worker is:
+- `CoreDataAutomationBackgroundService`
+- `CoreDataAutomationOrchestrator`
+
+It runs as an internal `BackgroundService` and does not need an external cron job.
+
+The old `LiveAutomation` config section is kept only for backward compatibility and is disabled by default.
+
+The new primary config section is:
+
+`CoreDataAutomation`
+
+### 29.2 `supported_leagues` After Stage 10
+
+`supported_leagues` is no longer used as the ingest gate for automatic core-data sync.
+
+Its role is now:
+- pinned or priority list for UI/admin usage
+- optional business curation layer
+- backward-compatible metadata for older read/admin screens
+
+Automatic ingestion now targets all current league-seasons discovered from API-Football `/leagues?current=true`.
+
+### 29.3 New Automatic Refresh Scope
+
+The primary automatic flow now does this:
+
+1. Daily catalog refresh
+- `countries`
+- full leagues catalog
+- current league-season target list
+- bookmaker reference list through `/odds/bookmakers`
+
+2. Rolling team refresh
+- all current league-seasons
+- one league-season is synced only when due
+
+3. Rolling fixture refresh
+- full fixture sync for all current league-seasons
+- extra hot-window fixture refresh for leagues with matches around `now`
+
+4. Live scoreboard refresh
+- `fixtures?live=all`
+- no `supported_leagues` restriction
+
+5. Rolling pre-match odds refresh
+- only for league-seasons with fixtures in the next 72 hours
+- refresh cadence depends on kickoff proximity
+
+6. Live odds refresh
+- enabled by default in the new model
+- scoped only to currently live leagues
+
+7. Repair pass
+- periodic recovery sync for hot league-seasons
+
+Internally these now run as separate automation jobs:
+- `catalog_refresh`
+- `teams_rolling`
+- `fixtures_rolling`
+- `odds_pre_match`
+- `odds_live`
+- `repair`
+
+### 29.4 Default Timing
+
+Default `CoreDataAutomation` timings in `appsettings.json`:
+
+- `ActiveIntervalSeconds = 30`
+- `IdleIntervalSeconds = 120`
+- `CatalogRefreshHours = 24`
+- `BookmakersReferenceRefreshHours = 24`
+- `LiveStatusIntervalSeconds = 30`
+- `TeamsIntervalHours = 24`
+- `FixturesBaselineIntervalHours = 12`
+- `FixtureHotIntervalMinutes = 120`
+- `FixtureHotLookbackHours = 12`
+- `FixtureHotLookaheadHours = 36`
+- `OddsLookaheadHours = 72`
+- `OddsFarIntervalHours = 6`
+- `OddsMidIntervalHours = 2`
+- `OddsNearIntervalMinutes = 30`
+- `OddsFinalIntervalMinutes = 10`
+- `LiveOddsIntervalSeconds = 60`
+- `RepairIntervalHours = 4`
+
+### 29.5 Budget Strategy For 70 000 Requests/Day
+
+The new defaults are designed to stay comfortably below the daily limit, not to spend the entire limit.
+
+Operational strategy:
+- keep the heavy work rolling and distributed
+- avoid full-resync bursts
+- prefer one global live heartbeat call over many per-league live polls
+- refresh odds only for league-seasons with near fixtures
+- degrade non-critical work early when quota becomes tight
+
+Quota guard defaults:
+- `LowDailyRemainingThreshold = 10000`
+- `CriticalDailyRemainingThreshold = 2500`
+
+Core automation daily budget defaults:
+- `AutomationDailyBudget = 65000`
+- `ProviderDailySafetyBuffer = 5000`
+- `CatalogRefreshDailyBudget = 500`
+- `TeamsRollingDailyBudget = 9000`
+- `FixturesRollingDailyBudget = 18000`
+- `OddsPreMatchDailyBudget = 22000`
+- `OddsLiveDailyBudget = 12000`
+- `RepairDailyBudget = 3500`
+
+When quota gets tighter:
+- team rolling sync slows down first
+- baseline fixture rolling sync slows down next
+- hot fixtures and pre-match odds get smaller per-cycle batches
+- live odds batch size is reduced
+- the live heartbeat remains the cheapest last-resort live refresh
+
+### 29.6 New Catalog Reference Endpoint Flow
+
+Bookmaker reference sync now has two separate concepts:
+
+1. `POST /api/bookmakers/sync`
+- local cache rebuild for one league-season
+- uses already stored odds data
+
+2. `POST /api/bookmakers/sync-reference`
+- global bookmaker reference refresh from API-Football `/odds/bookmakers`
+- updates global sync state `bookmakers_reference`
+- this is what the new automatic worker uses daily
+
+### 29.7 Sync Status Impact
+
+`GET /api/sync-status` now prefers the in-memory current league-season catalog from the new automation layer.
+
+That means:
+- the endpoint can now show automation status for all current league-seasons
+- `IsActive` and `Priority` still come from `supported_leagues` when such a row exists
+- leagues outside `supported_leagues` still appear in the core automation view with default `IsActive=false` and `Priority=0`
+- it now also returns `CoreAutomation`, which contains:
+  - catalog last refresh timestamp
+  - current league-season count
+  - total automation budget used/remaining for the UTC day
+  - per-job status, last start/completion/skip timestamps, desired vs actual requests and processed items
+
+New global sync-state entries used by Stage 10:
+- `leagues_current`
+- `bookmakers_reference`
+
+### 29.8 What Is Now Legacy By Default
+
+The following flows still exist, but are no longer automatically refreshed by the primary worker:
+- match-center auto-refresh
+- preview auto-refresh
+- team statistics auto-refresh
+- league analytics auto-refresh
+- standings auto-refresh
+
+They are still available through their current endpoints and can still be called manually.

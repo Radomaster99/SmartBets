@@ -4,6 +4,7 @@ public class SyncStatusDto
 {
     public DateTime GeneratedAtUtc { get; set; }
     public ApiQuotaStatusDto? ApiQuota { get; set; }
+    public CoreAutomationStatusDto? CoreAutomation { get; set; }
     public IReadOnlyList<GlobalSyncStatusItemDto> Global { get; set; } = Array.Empty<GlobalSyncStatusItemDto>();
     public IReadOnlyList<LeagueSyncStatusItemDto> Leagues { get; set; } = Array.Empty<LeagueSyncStatusItemDto>();
 }

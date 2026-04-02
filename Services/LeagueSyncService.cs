@@ -18,7 +18,23 @@ public class LeagueSyncService
     public async Task<int> SyncLeaguesAsync(CancellationToken cancellationToken = default)
     {
         var apiLeagues = await _apiService.GetLeaguesAsync(cancellationToken);
+        var result = await SyncLeaguesInternalAsync(apiLeagues, includeTargets: false, cancellationToken);
+        return result.Processed;
+    }
 
+    public async Task<IReadOnlyList<CoreLeagueSeasonTarget>> SyncCurrentLeaguesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var apiLeagues = await _apiService.GetCurrentLeaguesAsync(cancellationToken);
+        var result = await SyncLeaguesInternalAsync(apiLeagues, includeTargets: true, cancellationToken);
+        return result.Targets;
+    }
+
+    private async Task<LeagueSyncExecutionResult> SyncLeaguesInternalAsync(
+        IReadOnlyCollection<Models.ApiFootball.ApiFootballLeagueItem> apiLeagues,
+        bool includeTargets,
+        CancellationToken cancellationToken)
+    {
         var countries = await _dbContext.Countries.ToListAsync(cancellationToken);
         var countriesByName = countries.ToDictionary(x => x.Name.ToLowerInvariant());
 
@@ -34,6 +50,7 @@ public class LeagueSyncService
 
         var processed = 0;
         var nowUtc = DateTime.UtcNow;
+        var targets = new Dictionary<string, CoreLeagueSeasonTarget>(StringComparer.Ordinal);
 
         foreach (var item in apiLeagues)
         {
@@ -100,12 +117,33 @@ public class LeagueSyncService
                 }
 
                 processed++;
+
+                if (!includeTargets)
+                    continue;
+
+                targets[key] = new CoreLeagueSeasonTarget
+                {
+                    LeagueApiId = league.Id,
+                    Season = season.Year,
+                    LeagueName = league.Name,
+                    CountryName = item.Country.Name?.Trim() ?? string.Empty,
+                    HasFixtures = apiCoverage is not null,
+                    HasOdds = apiCoverage?.Odds ?? false
+                };
             }
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return processed;
+        return new LeagueSyncExecutionResult
+        {
+            Processed = processed,
+            Targets = targets.Values
+                .OrderBy(x => x.CountryName)
+                .ThenBy(x => x.LeagueName)
+                .ThenBy(x => x.Season)
+                .ToList()
+        };
     }
 
     private static void ApplyCoverage(
@@ -125,5 +163,11 @@ public class LeagueSyncService
         target.HasInjuries = source?.Injuries ?? false;
         target.HasPredictions = source?.Predictions ?? false;
         target.HasOdds = source?.Odds ?? false;
+    }
+
+    private sealed class LeagueSyncExecutionResult
+    {
+        public int Processed { get; set; }
+        public IReadOnlyList<CoreLeagueSeasonTarget> Targets { get; set; } = Array.Empty<CoreLeagueSeasonTarget>();
     }
 }
