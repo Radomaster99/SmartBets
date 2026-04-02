@@ -45,6 +45,7 @@ public class SyncStateService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
     }
 
     public async Task SetLastSyncedAtBatchAsync(
@@ -99,6 +100,7 @@ public class SyncStateService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
     }
 
     private static string BuildKey(string entityType, long? leagueApiId, int? season)

@@ -90,6 +90,7 @@ public class CountrySyncService
         Console.WriteLine($"[DEBUG] Processed: {result.Processed}, Inserted: {result.Inserted}, Updated: {result.Updated}");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         return result;
     }

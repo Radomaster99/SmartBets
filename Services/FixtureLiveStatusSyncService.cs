@@ -67,10 +67,12 @@ public class FixtureLiveStatusSyncService
         var seasons = leagueSeasonKeys.Select(x => x.Season).Distinct().ToList();
 
         var leagues = await _dbContext.Leagues
+            .AsNoTracking()
             .Where(x => leagueIds.Contains(x.ApiLeagueId) && seasons.Contains(x.Season))
             .ToListAsync(cancellationToken);
 
         var teams = await _dbContext.Teams
+            .AsNoTracking()
             .Where(x => teamApiIds.Contains(x.ApiTeamId))
             .ToListAsync(cancellationToken);
 
@@ -152,6 +154,7 @@ public class FixtureLiveStatusSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         var syncStateItems = touchedScopes
             .Select(ParseLeagueSeasonScope)

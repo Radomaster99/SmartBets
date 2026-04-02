@@ -28,6 +28,8 @@ public class LiveOddsMarketDto
     public long ApiBetId { get; set; }
     public string BetName { get; set; } = string.Empty;
     public DateTime CollectedAtUtc { get; set; }
+    public DateTime LastSnapshotCollectedAtUtc { get; set; }
+    public DateTime? LastSyncedAtUtc { get; set; }
     public IReadOnlyList<LiveOddsValueDto> Values { get; set; } = Array.Empty<LiveOddsValueDto>();
 }
 

@@ -474,6 +474,7 @@ public class PreMatchOddsService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         if (touchedFixtureIds.Count > 0)
         {

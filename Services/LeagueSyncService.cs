@@ -53,15 +53,30 @@ public class LeagueSyncService
         int? minimumCurrentSeason = null,
         int? maximumCurrentSeason = null)
     {
-        var countries = await _dbContext.Countries.ToListAsync(cancellationToken);
+        var countries = await _dbContext.Countries
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
         var countriesByName = countries.ToDictionary(x => x.Name.ToLowerInvariant());
 
-        var existingLeagues = await _dbContext.Leagues.ToListAsync(cancellationToken);
+        var apiLeagueIds = apiLeagues
+            .Select(x => x.League.Id)
+            .Distinct()
+            .ToList();
+        var seasonsInPayload = apiLeagues
+            .SelectMany(x => x.Seasons.Select(y => y.Year))
+            .Distinct()
+            .ToList();
+
+        var existingLeagues = await _dbContext.Leagues
+            .Where(x => apiLeagueIds.Contains(x.ApiLeagueId) && seasonsInPayload.Contains(x.Season))
+            .ToListAsync(cancellationToken);
         var existingLeaguesLookup = existingLeagues.ToDictionary(
             x => $"{x.ApiLeagueId}_{x.Season}",
             x => x);
 
-        var existingCoverages = await _dbContext.LeagueSeasonCoverages.ToListAsync(cancellationToken);
+        var existingCoverages = await _dbContext.LeagueSeasonCoverages
+            .Where(x => apiLeagueIds.Contains(x.LeagueApiId) && seasonsInPayload.Contains(x.Season))
+            .ToListAsync(cancellationToken);
         var existingCoveragesLookup = existingCoverages.ToDictionary(
             x => $"{x.LeagueApiId}_{x.Season}",
             x => x);
@@ -161,6 +176,7 @@ public class LeagueSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         return new LeagueSyncExecutionResult
         {

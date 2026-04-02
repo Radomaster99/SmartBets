@@ -33,16 +33,24 @@ public class TeamSyncService
         }
 
         var result = new TeamSyncResult();
+        var apiTeams = await _apiService.GetTeamsAsync(leagueId, season, cancellationToken);
 
-        var countries = await _dbContext.Countries.ToListAsync(cancellationToken);
+        var countries = await _dbContext.Countries
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
         var countriesByName = countries.ToDictionary(
             x => x.Name.Trim().ToLowerInvariant(),
             x => x);
 
-        var existingTeams = await _dbContext.Teams.ToListAsync(cancellationToken);
-        var existingByApiId = existingTeams.ToDictionary(x => x.ApiTeamId);
+        var apiTeamIds = apiTeams
+            .Select(x => x.Team.Id)
+            .Distinct()
+            .ToList();
 
-        var apiTeams = await _apiService.GetTeamsAsync(leagueId, season, cancellationToken);
+        var existingTeams = await _dbContext.Teams
+            .Where(x => apiTeamIds.Contains(x.ApiTeamId))
+            .ToListAsync(cancellationToken);
+        var existingByApiId = existingTeams.ToDictionary(x => x.ApiTeamId);
 
         foreach (var item in apiTeams)
         {
@@ -181,6 +189,7 @@ public class TeamSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         return result;
     }

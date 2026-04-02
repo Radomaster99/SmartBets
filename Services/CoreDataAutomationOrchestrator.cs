@@ -167,6 +167,7 @@ public class CoreDataAutomationOrchestrator
         await RunOddsLiveJobAsync(
             state,
             snapshot,
+            syncLookup,
             nowUtc,
             options,
             RegisterSync,
@@ -511,6 +512,7 @@ public class CoreDataAutomationOrchestrator
     private async Task RunOddsLiveJobAsync(
         CoreDataAutomationWorkerState state,
         CoreDataAutomationSnapshot snapshot,
+        IReadOnlyDictionary<string, DateTime> syncLookup,
         DateTime nowUtc,
         CoreDataAutomationOptions options,
         Action<string, long?, int?> registerSync,
@@ -576,8 +578,17 @@ public class CoreDataAutomationOrchestrator
 
         if (liveOddsDue && remainingRequests > 0)
         {
+            var orderedLiveLeagueSeasons = snapshot.LiveLeagueSeasons
+                .GroupBy(x => x.LeagueApiId)
+                .OrderBy(x => x
+                    .Select(y => GetLastSyncedAtUtc(syncLookup, "live_odds", y.LeagueApiId, y.Season) ?? DateTime.MinValue)
+                    .Max())
+                .ThenBy(x => x.Key)
+                .SelectMany(x => x.OrderBy(y => y.Season))
+                .ToList();
+
             var liveOddsResult = await _oddsLiveJobService.RunAsync(
-                snapshot.LiveLeagueSeasons,
+                orderedLiveLeagueSeasons,
                 remainingRequests,
                 registerSync,
                 cancellationToken);

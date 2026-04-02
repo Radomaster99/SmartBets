@@ -36,12 +36,19 @@ public class CoreAutomationOddsLiveJobService
     {
         var result = new CoreAutomationTargetJobResult();
 
-        var distinctLeagueIds = liveLeagueSeasons
-            .Select(x => x.LeagueApiId)
-            .Distinct()
-            .OrderBy(x => x)
-            .Take(Math.Max(0, maxLeaguesPerCycle))
-            .ToList();
+        var distinctLeagueIds = new List<long>();
+        var seenLeagueIds = new HashSet<long>();
+
+        foreach (var liveLeagueSeason in liveLeagueSeasons)
+        {
+            if (!seenLeagueIds.Add(liveLeagueSeason.LeagueApiId))
+                continue;
+
+            distinctLeagueIds.Add(liveLeagueSeason.LeagueApiId);
+
+            if (distinctLeagueIds.Count >= Math.Max(0, maxLeaguesPerCycle))
+                break;
+        }
 
         if (distinctLeagueIds.Count == 0)
             return result;

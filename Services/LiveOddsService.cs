@@ -269,6 +269,7 @@ public class LiveOddsService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         var syncStateItems = touchedScopes
             .Select(ParseLeagueSeasonScope)
@@ -299,6 +300,17 @@ public class LiveOddsService
         if (fixture is null)
             return Array.Empty<LiveOddsMarketDto>();
 
+        var lastSyncedAtUtc = latestOnly
+            ? await _dbContext.SyncStates
+                .AsNoTracking()
+                .Where(x =>
+                    x.EntityType == "live_odds" &&
+                    x.LeagueApiId == fixture.LeagueApiId &&
+                    x.Season == fixture.Season)
+                .Select(x => (DateTime?)x.LastSyncedAt)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
         var rows = await _dbContext.LiveOdds
             .AsNoTracking()
             .Where(x => x.FixtureId == fixture.FixtureId)
@@ -327,6 +339,11 @@ public class LiveOddsService
             if (selectedRows.Count == 0)
                 continue;
 
+            var lastSnapshotCollectedAtUtc = selectedRows.Max(x => x.CollectedAtUtc);
+            var effectiveCollectedAtUtc = latestOnly && lastSyncedAtUtc.HasValue && lastSyncedAtUtc.Value > lastSnapshotCollectedAtUtc
+                ? lastSyncedAtUtc.Value
+                : lastSnapshotCollectedAtUtc;
+
             result.Add(new LiveOddsMarketDto
             {
                 FixtureId = fixture.FixtureId,
@@ -336,7 +353,9 @@ public class LiveOddsService
                 Bookmaker = group.Key.Name,
                 ApiBetId = group.Key.ApiBetId,
                 BetName = group.Key.BetName,
-                CollectedAtUtc = selectedRows.Max(x => x.CollectedAtUtc),
+                CollectedAtUtc = effectiveCollectedAtUtc,
+                LastSnapshotCollectedAtUtc = lastSnapshotCollectedAtUtc,
+                LastSyncedAtUtc = lastSyncedAtUtc,
                 Values = selectedRows
                     .OrderByDescending(x => x.IsMain ?? false)
                     .ThenBy(x => x.OutcomeLabel)

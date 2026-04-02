@@ -33,6 +33,7 @@ public class FixtureSyncService
         await _leagueCoverageService.EnsureFixturesSupportedAsync(leagueId, season, cancellationToken);
 
         var league = await _dbContext.Leagues
+            .AsNoTracking()
             .FirstOrDefaultAsync(x => x.ApiLeagueId == leagueId && x.Season == season, cancellationToken);
 
         if (league is null)
@@ -41,14 +42,31 @@ public class FixtureSyncService
         }
 
         var result = new FixtureSyncResult();
+        var apiFixtures = await _apiService.GetFixturesAsync(leagueId, season, cancellationToken);
+        var apiFixtureIds = apiFixtures
+            .Select(x => x.Fixture.Id)
+            .Distinct()
+            .ToList();
+        var teamApiIds = apiFixtures
+            .SelectMany(x => new[] { x.Teams.Home.Id, x.Teams.Away.Id })
+            .Distinct()
+            .ToList();
 
-        var teams = await _dbContext.Teams.ToListAsync(cancellationToken);
+        var teams = await _dbContext.Teams
+            .AsNoTracking()
+            .Where(x => teamApiIds.Contains(x.ApiTeamId))
+            .Select(x => new TeamReference
+            {
+                Id = x.Id,
+                ApiTeamId = x.ApiTeamId
+            })
+            .ToListAsync(cancellationToken);
         var teamsByApiId = teams.ToDictionary(x => x.ApiTeamId, x => x);
 
-        var existingFixtures = await _dbContext.Fixtures.ToListAsync(cancellationToken);
+        var existingFixtures = await _dbContext.Fixtures
+            .Where(x => apiFixtureIds.Contains(x.ApiFixtureId))
+            .ToListAsync(cancellationToken);
         var existingByApiId = existingFixtures.ToDictionary(x => x.ApiFixtureId, x => x);
-
-        var apiFixtures = await _apiService.GetFixturesAsync(leagueId, season, cancellationToken);
 
         foreach (var item in apiFixtures)
         {
@@ -97,6 +115,7 @@ public class FixtureSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         return result;
     }
@@ -106,6 +125,7 @@ public class FixtureSyncService
         await _leagueCoverageService.EnsureFixturesSupportedAsync(leagueId, season, cancellationToken);
 
         var league = await _dbContext.Leagues
+            .AsNoTracking()
             .FirstOrDefaultAsync(x => x.ApiLeagueId == leagueId && x.Season == season, cancellationToken);
 
         if (league is null)
@@ -114,14 +134,31 @@ public class FixtureSyncService
         }
 
         var result = new FixtureSyncResult();
+        var apiFixtures = await _apiService.GetUpcomingFixturesAsync(leagueId, season, cancellationToken);
+        var apiFixtureIds = apiFixtures
+            .Select(x => x.Fixture.Id)
+            .Distinct()
+            .ToList();
+        var teamApiIds = apiFixtures
+            .SelectMany(x => new[] { x.Teams.Home.Id, x.Teams.Away.Id })
+            .Distinct()
+            .ToList();
 
-        var teams = await _dbContext.Teams.ToListAsync(cancellationToken);
+        var teams = await _dbContext.Teams
+            .AsNoTracking()
+            .Where(x => teamApiIds.Contains(x.ApiTeamId))
+            .Select(x => new TeamReference
+            {
+                Id = x.Id,
+                ApiTeamId = x.ApiTeamId
+            })
+            .ToListAsync(cancellationToken);
         var teamsByApiId = teams.ToDictionary(x => x.ApiTeamId, x => x);
 
-        var existingFixtures = await _dbContext.Fixtures.ToListAsync(cancellationToken);
+        var existingFixtures = await _dbContext.Fixtures
+            .Where(x => apiFixtureIds.Contains(x.ApiFixtureId))
+            .ToListAsync(cancellationToken);
         var existingByApiId = existingFixtures.ToDictionary(x => x.ApiFixtureId, x => x);
-
-        var apiFixtures = await _apiService.GetUpcomingFixturesAsync(leagueId, season, cancellationToken);
 
         foreach (var item in apiFixtures)
         {
@@ -170,6 +207,7 @@ public class FixtureSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
 
         return result;
     }
@@ -230,5 +268,11 @@ public class FixtureSyncService
             return null;
 
         return value.Trim();
+    }
+
+    private sealed class TeamReference
+    {
+        public long Id { get; set; }
+        public long ApiTeamId { get; set; }
     }
 }

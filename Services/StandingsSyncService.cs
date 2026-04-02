@@ -33,6 +33,7 @@ public class StandingsSyncService
         await _leagueCoverageService.EnsureStandingsSupportedAsync(leagueId, season, cancellationToken);
 
         var league = await _dbContext.Leagues
+            .AsNoTracking()
             .FirstOrDefaultAsync(x => x.ApiLeagueId == leagueId && x.Season == season, cancellationToken);
 
         if (league is null)
@@ -41,8 +42,21 @@ public class StandingsSyncService
         }
 
         var result = new StandingsSyncResult();
+        var apiStandings = await _apiService.GetStandingsAsync(leagueId, season, cancellationToken);
+        var teamApiIds = apiStandings
+            .Select(x => x.Team.Id)
+            .Distinct()
+            .ToList();
 
-        var teams = await _dbContext.Teams.ToListAsync(cancellationToken);
+        var teams = await _dbContext.Teams
+            .AsNoTracking()
+            .Where(x => teamApiIds.Contains(x.ApiTeamId))
+            .Select(x => new TeamReference
+            {
+                Id = x.Id,
+                ApiTeamId = x.ApiTeamId
+            })
+            .ToListAsync(cancellationToken);
         var teamsByApiId = teams.ToDictionary(x => x.ApiTeamId, x => x);
 
         var existingStandings = await _dbContext.Standings
@@ -50,8 +64,6 @@ public class StandingsSyncService
             .ToListAsync(cancellationToken);
 
         var existingByTeamId = existingStandings.ToDictionary(x => x.TeamId, x => x);
-
-        var apiStandings = await _apiService.GetStandingsAsync(leagueId, season, cancellationToken);
 
         foreach (var item in apiStandings)
         {
@@ -116,6 +128,13 @@ public class StandingsSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
         return result;
+    }
+
+    private sealed class TeamReference
+    {
+        public long Id { get; set; }
+        public long ApiTeamId { get; set; }
     }
 }

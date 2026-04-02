@@ -71,6 +71,7 @@ public class BookmakerSyncService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _dbContext.ChangeTracker.Clear();
         return result;
     }
 

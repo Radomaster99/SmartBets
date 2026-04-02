@@ -1976,6 +1976,8 @@ Response:
 - `ApiBetId`
 - `BetName`
 - `CollectedAtUtc`
+- `LastSnapshotCollectedAtUtc`
+- `LastSyncedAtUtc`
 - `Values`
 
 `LiveOddsValueDto`:
@@ -1986,6 +1988,12 @@ Response:
 - `Stopped`
 - `Blocked`
 - `Finished`
+
+Freshness note:
+- `CollectedAtUtc` now represents the effective freshness of the live odds market when `latestOnly=true`
+- if the worker polled the provider again but the values did not change, `CollectedAtUtc` can still move forward through the league-season `live_odds` sync state
+- `LastSnapshotCollectedAtUtc` keeps the timestamp of the last stored changed snapshot
+- `LastSyncedAtUtc` shows the last successful live odds refresh for the league-season behind the fixture
 
 ### 26.6 `GET /api/fixtures/{apiFixtureId}/odds/live`
 
