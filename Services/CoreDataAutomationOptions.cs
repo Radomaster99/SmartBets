@@ -35,7 +35,7 @@ public class CoreDataAutomationOptions
     public int OddsMidIntervalHours { get; set; } = 2;
     public int OddsNearIntervalMinutes { get; set; } = 30;
     public int OddsFinalWindowMinutes { get; set; } = 60;
-    public int OddsFinalIntervalMinutes { get; set; } = 10;
+    public int OddsFinalIntervalMinutes { get; set; } = 15;
     public int MaxOddsFixturesPerCycle { get; set; } = 12;
     public bool EnableLiveOddsAutoSync { get; set; } = true;
     public bool AllowAllLiveOddsMarkets { get; set; } = true;

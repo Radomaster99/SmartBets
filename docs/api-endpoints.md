@@ -1797,6 +1797,8 @@ Behavior:
 - if `leagueId` is provided: sync runs only for this league id
 - if `leagueId` is missing and `activeOnly=true`: sync uses distinct active league ids from `supported_leagues`
 - if there are no active supported leagues and no `leagueId`, the endpoint returns without making a remote call
+- besides true `/fixtures?live=...` matches, the sync also runs a small catch-up batch for recently kicked off local fixtures that still look `NS/TBD` or stale live locally
+- this catches transitions such as `NS -> FT` even when the provider live window was missed between two heartbeat runs
 - sync state `fixtures_live` is updated for every touched league/season
 
 Response:
@@ -2398,7 +2400,7 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `OddsFarIntervalHours = 6`
 - `OddsMidIntervalHours = 2`
 - `OddsNearIntervalMinutes = 30`
-- `OddsFinalIntervalMinutes = 10`
+- `OddsFinalIntervalMinutes = 15`
 - `LiveOddsIntervalSeconds = 60`
 - `RepairIntervalHours = 4`
 

@@ -27,9 +27,9 @@ public class CoreAutomationFixturesRollingJobService
 
         return new CoreAutomationSingleJobResult
         {
-            RequestsUsed = 1,
-            ProcessedItems = liveStatusResult.LiveFixturesReceived,
-            Action = $"fixtures-live:{liveStatusResult.LiveFixturesReceived}"
+            RequestsUsed = liveStatusResult.RequestsUsed,
+            ProcessedItems = liveStatusResult.FixturesProcessed,
+            Action = $"fixtures-live:{liveStatusResult.FixturesProcessed}"
         };
     }
 

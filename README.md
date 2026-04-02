@@ -76,6 +76,7 @@ Stage 5 odds analytics:
 
 Stage 6 live status + metadata enrichment:
 - lightweight live fixture status sync via `POST /api/fixtures/sync-live-status`
+- live status sync also performs a small recent-kickoff catch-up so fixtures do not stay stuck on `NS` after the provider live window is missed
 - richer fixture metadata stored from `/fixtures`
 - richer team metadata stored from `/teams`
 - new fixture freshness field for live status checks
@@ -159,7 +160,7 @@ Stage 10 core-data automation refactor:
   - full fixtures rolling every 12h per current league-season
   - hot fixture leagues every 2h
   - live fixture heartbeat every 30s for all leagues
-  - pre-match odds every 6h / 2h / 30m / 10m depending on kickoff proximity
+  - pre-match odds every 6h / 2h / 30m / 15m depending on kickoff proximity
   - live odds every 60s for live leagues
 - quota defaults are now tuned for a 70 000/day plan, with early degradation before the hard limit:
   - `LowDailyRemainingThreshold = 10000`
