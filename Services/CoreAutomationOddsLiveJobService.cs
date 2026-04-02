@@ -52,13 +52,14 @@ public class CoreAutomationOddsLiveJobService
 
         foreach (var leagueApiId in distinctLeagueIds)
         {
+            result.RequestsUsed++;
+
             try
             {
                 var syncResult = await _liveOddsService.SyncLiveOddsAsync(
                     leagueId: leagueApiId,
                     cancellationToken: cancellationToken);
 
-                result.RequestsUsed++;
                 result.ProcessedItems += syncResult.SnapshotsInserted;
 
                 if (!scopedSeasonLookup.TryGetValue(leagueApiId, out var seasons))

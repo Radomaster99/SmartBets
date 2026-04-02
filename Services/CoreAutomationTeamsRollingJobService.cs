@@ -25,12 +25,13 @@ public class CoreAutomationTeamsRollingJobService
 
         foreach (var target in targets)
         {
+            result.RequestsUsed++;
+
             try
             {
                 var syncResult = await _teamSyncService.SyncTeamsAsync(target.LeagueApiId, target.Season, cancellationToken);
                 registerSync("teams", target.LeagueApiId, target.Season);
                 result.SyncedKeys.Add($"{target.LeagueApiId}:{target.Season}");
-                result.RequestsUsed++;
                 result.ProcessedItems += syncResult.Processed;
             }
             catch (Exception ex)

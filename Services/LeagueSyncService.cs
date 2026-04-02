@@ -121,6 +121,9 @@ public class LeagueSyncService
                 if (!includeTargets)
                     continue;
 
+                if (!season.Current)
+                    continue;
+
                 targets[key] = new CoreLeagueSeasonTarget
                 {
                     LeagueApiId = league.Id,

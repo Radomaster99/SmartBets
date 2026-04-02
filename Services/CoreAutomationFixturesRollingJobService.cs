@@ -43,13 +43,14 @@ public class CoreAutomationFixturesRollingJobService
 
         foreach (var target in targets)
         {
+            result.RequestsUsed++;
+
             try
             {
                 var syncResult = await _fixtureSyncService.SyncFixturesAsync(target.LeagueApiId, target.Season, cancellationToken);
                 registerSync(syncEntityType, target.LeagueApiId, target.Season);
                 registerSync("fixtures_full", target.LeagueApiId, target.Season);
                 result.SyncedKeys.Add($"{target.LeagueApiId}:{target.Season}");
-                result.RequestsUsed++;
                 result.ProcessedItems += syncResult.Processed;
             }
             catch (Exception ex)

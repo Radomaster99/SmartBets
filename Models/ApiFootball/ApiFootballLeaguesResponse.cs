@@ -40,6 +40,9 @@ public class ApiFootballLeagueSeason
     [JsonPropertyName("year")]
     public int Year { get; set; }
 
+    [JsonPropertyName("current")]
+    public bool Current { get; set; }
+
     [JsonPropertyName("coverage")]
     public ApiFootballLeagueSeasonCoverage? Coverage { get; set; }
 }

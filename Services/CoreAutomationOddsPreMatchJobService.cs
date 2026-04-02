@@ -26,6 +26,8 @@ public class CoreAutomationOddsPreMatchJobService
         if (targets.Count == 0)
             return result;
 
+        result.RequestsUsed = targets.Count;
+
         try
         {
             var syncResult = await _preMatchOddsService.SyncOddsForFixturesAsync(
@@ -39,7 +41,6 @@ public class CoreAutomationOddsPreMatchJobService
                 result.SyncedKeys.Add($"{scope.LeagueApiId}:{scope.Season}");
             }
 
-            result.RequestsUsed = targets.Count;
             result.ProcessedItems = syncResult.SnapshotsInserted;
         }
         catch (Exception ex)
