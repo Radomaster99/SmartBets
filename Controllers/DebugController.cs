@@ -9,6 +9,8 @@ namespace SmartBets.Controllers;
 [Route("api/[controller]")]
 public class DebugController : ControllerBase
 {
+    private const string ProviderLiveFeedBookmakerName = "API-Football Live Feed";
+
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _footballApiService;
@@ -102,9 +104,9 @@ public class DebugController : ControllerBase
             BookmakerId = bookmakerId,
             ProviderFixturesReceived = response.Count,
             ProviderFixtureApiIds = fixtureIds.Take(20).ToList(),
-            ProviderBookmakersReceived = response.Sum(x => x.Bookmakers.Count),
-            ProviderBetsReceived = response.Sum(x => x.Bookmakers.Sum(y => y.Bets.Count)),
-            ProviderValuesReceived = response.Sum(x => x.Bookmakers.Sum(y => y.Bets.Sum(z => z.Values.Count))),
+            ProviderBookmakersReceived = response.Sum(x => x.Bookmakers.Count > 0 ? x.Bookmakers.Count : x.Odds.Count > 0 ? 1 : 0),
+            ProviderBetsReceived = response.Sum(x => x.Bookmakers.Count > 0 ? x.Bookmakers.Sum(y => y.Bets.Count) : x.Odds.Count),
+            ProviderValuesReceived = response.Sum(x => x.Bookmakers.Count > 0 ? x.Bookmakers.Sum(y => y.Bets.Sum(z => z.Values.Count)) : x.Odds.Sum(y => y.Values.Count)),
             Sample = response
                 .Take(5)
                 .Select(x => new
@@ -112,23 +114,46 @@ public class DebugController : ControllerBase
                     FixtureId = x.Fixture.Id,
                     LeagueId = x.League.Id,
                     Season = x.League.Season,
-                    Bookmakers = x.Bookmakers.Take(3).Select(y => new
-                    {
-                        y.Id,
-                        y.Name,
-                        Bets = y.Bets.Take(3).Select(z => new
+                    Bookmakers = (x.Bookmakers.Count > 0
+                        ? x.Bookmakers.Take(3).Select(y => new
                         {
-                            z.Id,
-                            z.Name,
-                            Values = z.Values.Take(5).Select(v => new
+                            y.Id,
+                            y.Name,
+                            Bets = y.Bets.Take(3).Select(z => new
                             {
-                                v.Value,
-                                v.Odd,
-                                v.Main,
-                                v.Handicap
+                                z.Id,
+                                z.Name,
+                                Values = z.Values.Take(5).Select(v => new
+                                {
+                                    v.Value,
+                                    v.Odd,
+                                    v.Main,
+                                    v.Handicap,
+                                    v.Suspended
+                                })
                             })
                         })
-                    })
+                        : new[]
+                        {
+                            new
+                            {
+                                Id = 0L,
+                                Name = ProviderLiveFeedBookmakerName,
+                                Bets = x.Odds.Take(3).Select(z => new
+                                {
+                                    z.Id,
+                                    z.Name,
+                                    Values = z.Values.Take(5).Select(v => new
+                                    {
+                                        v.Value,
+                                        v.Odd,
+                                        v.Main,
+                                        v.Handicap,
+                                        v.Suspended
+                                    })
+                                })
+                            }
+                        })
                 }),
             LocalMatchingFixtures = localFixtures
         });

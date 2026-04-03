@@ -6,11 +6,15 @@ using SmartBets.Dtos;
 using SmartBets.Entities;
 using SmartBets.Enums;
 using SmartBets.Hubs;
+using SmartBets.Models.ApiFootball;
 
 namespace SmartBets.Services;
 
 public class LiveOddsService
 {
+    private const long ProviderLiveFeedBookmakerApiId = 0;
+    private const string ProviderLiveFeedBookmakerName = "API-Football Live Feed";
+
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
     private readonly SyncStateService _syncStateService;
@@ -143,7 +147,7 @@ public class LiveOddsService
         }
 
         result.ProviderFixturesReceived = remoteRows.Count;
-        result.ProviderBookmakersReceived = remoteRows.Sum(x => x.Bookmakers.Count);
+        result.ProviderBookmakersReceived = remoteRows.Sum(GetProviderBookmakerCount);
         result.ProviderReturnedEmpty = remoteRows.Count == 0;
         result.ProviderFixtureApiIdsSample = remoteRows
             .Select(x => x.Fixture.Id)
@@ -223,7 +227,7 @@ public class LiveOddsService
             result.FixturesMatched++;
             touchedScopes.Add(BuildLeagueScopeKey(fixture.LeagueApiId, fixture.Season));
 
-            foreach (var apiBookmaker in remoteFixture.Bookmakers)
+            foreach (var apiBookmaker in GetProviderBookmakers(remoteFixture))
             {
                 result.BookmakersProcessed++;
 
@@ -258,9 +262,9 @@ public class LiveOddsService
 
                         var normalizedOutcome = NormalizeNullable(value.Value) ?? string.Empty;
                         var normalizedLine = NormalizeNullable(value.Handicap);
-                        var stopped = apiBet.Stopped ?? apiBookmaker.Stopped ?? remoteFixture.Stopped;
-                        var blocked = apiBet.Blocked ?? apiBookmaker.Blocked ?? remoteFixture.Blocked;
-                        var finished = apiBet.Finished ?? apiBookmaker.Finished ?? remoteFixture.Finished;
+                        var stopped = value.Suspended ?? apiBet.Stopped ?? apiBookmaker.Stopped ?? GetFixtureStopped(remoteFixture);
+                        var blocked = apiBet.Blocked ?? apiBookmaker.Blocked ?? GetFixtureBlocked(remoteFixture);
+                        var finished = apiBet.Finished ?? apiBookmaker.Finished ?? GetFixtureFinished(remoteFixture);
 
                         var snapshotKey = BuildSnapshotKey(
                             fixture.FixtureId,
@@ -1084,6 +1088,77 @@ public class LiveOddsService
         return new LeagueSeasonScope(leagueApiId, season);
     }
 
+    private static IReadOnlyList<ProviderBookmakerScope> GetProviderBookmakers(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        if (fixture.Bookmakers.Count > 0)
+        {
+            return fixture.Bookmakers
+                .Select(x => new ProviderBookmakerScope(
+                    x.Id,
+                    x.Name,
+                    x.Bets,
+                    x.Stopped,
+                    x.Blocked,
+                    x.Finished))
+                .ToList();
+        }
+
+        if (fixture.Odds.Count > 0)
+        {
+            return new[]
+            {
+                new ProviderBookmakerScope(
+                    ProviderLiveFeedBookmakerApiId,
+                    ProviderLiveFeedBookmakerName,
+                    fixture.Odds,
+                    GetFixtureStopped(fixture),
+                    GetFixtureBlocked(fixture),
+                    GetFixtureFinished(fixture))
+            };
+        }
+
+        return Array.Empty<ProviderBookmakerScope>();
+    }
+
+    private static int GetProviderBookmakerCount(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        if (fixture.Bookmakers.Count > 0)
+            return fixture.Bookmakers.Count;
+
+        return fixture.Odds.Count > 0 ? 1 : 0;
+    }
+
+    private static int GetProviderBetCount(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        if (fixture.Bookmakers.Count > 0)
+            return fixture.Bookmakers.Sum(x => x.Bets.Count);
+
+        return fixture.Odds.Count;
+    }
+
+    private static int GetProviderValueCount(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        if (fixture.Bookmakers.Count > 0)
+            return fixture.Bookmakers.Sum(x => x.Bets.Sum(y => y.Values.Count));
+
+        return fixture.Odds.Sum(x => x.Values.Count);
+    }
+
+    private static bool? GetFixtureStopped(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        return fixture.Status?.Stopped ?? fixture.Stopped;
+    }
+
+    private static bool? GetFixtureBlocked(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        return fixture.Status?.Blocked ?? fixture.Blocked;
+    }
+
+    private static bool? GetFixtureFinished(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        return fixture.Status?.Finished ?? fixture.Finished;
+    }
+
     private static bool TryParseOdd(string? value, out decimal odd)
     {
         return decimal.TryParse(
@@ -1166,4 +1241,12 @@ public class LiveOddsService
     }
 
     private sealed record LeagueSeasonScope(long LeagueApiId, int Season);
+
+    private sealed record ProviderBookmakerScope(
+        long Id,
+        string Name,
+        IReadOnlyList<ApiFootballLiveOddsBet> Bets,
+        bool? Stopped,
+        bool? Blocked,
+        bool? Finished);
 }

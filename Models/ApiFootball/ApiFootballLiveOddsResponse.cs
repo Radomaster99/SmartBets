@@ -21,9 +21,30 @@ public class ApiFootballLiveOddsFixtureItem
     [JsonPropertyName("bookmakers")]
     public List<ApiFootballLiveOddsBookmaker> Bookmakers { get; set; } = new();
 
+    [JsonPropertyName("odds")]
+    public List<ApiFootballLiveOddsBet> Odds { get; set; } = new();
+
     [JsonPropertyName("update")]
     public string? Update { get; set; }
 
+    [JsonPropertyName("status")]
+    public ApiFootballLiveOddsStatus? Status { get; set; }
+
+    [JsonPropertyName("stopped")]
+    [JsonConverter(typeof(FlexibleBooleanConverter))]
+    public bool? Stopped { get; set; }
+
+    [JsonPropertyName("blocked")]
+    [JsonConverter(typeof(FlexibleBooleanConverter))]
+    public bool? Blocked { get; set; }
+
+    [JsonPropertyName("finished")]
+    [JsonConverter(typeof(FlexibleBooleanConverter))]
+    public bool? Finished { get; set; }
+}
+
+public class ApiFootballLiveOddsStatus
+{
     [JsonPropertyName("stopped")]
     [JsonConverter(typeof(FlexibleBooleanConverter))]
     public bool? Stopped { get; set; }
@@ -111,6 +132,10 @@ public class ApiFootballLiveOddsValue
     [JsonPropertyName("handicap")]
     [JsonConverter(typeof(FlexibleStringConverter))]
     public string? Handicap { get; set; }
+
+    [JsonPropertyName("suspended")]
+    [JsonConverter(typeof(FlexibleBooleanConverter))]
+    public bool? Suspended { get; set; }
 }
 
 public class ApiFootballLiveBetTypesResponse
