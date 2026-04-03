@@ -40,6 +40,20 @@ GET {{SmartBets_HostAddress}}/api/auth/me
 Authorization: Bearer {{JwtToken}}
 Accept: application/json
 
+### Query live fixtures with live odds summary for list view
+GET {{SmartBets_HostAddress}}/api/fixtures/query?state=Live&season=2026&page=1&pageSize=100&direction=asc&includeLiveOddsSummary=true
+Authorization: Bearer {{JwtToken}}
+Accept: application/json
+
+### Batch live odds summary by API fixture ids
+POST {{SmartBets_HostAddress}}/api/odds/live/summary
+Authorization: Bearer {{JwtToken}}
+Content-Type: application/json
+
+{
+  "fixtureIds": [1392123, 1392124, 1392125]
+}
+
 ### Historical bootstrap with pre-match odds snapshots
 POST {{SmartBets_HostAddress}}/api/preload/historical?fromSeason=2023&toSeason=2024&maxLeagueSeasons=10&includeOdds=true&force=false
 X-API-KEY: {{ApiKey}}

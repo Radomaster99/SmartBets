@@ -194,3 +194,19 @@ Stage 13 JWT auth for REST and SignalR:
 - legacy `X-API-KEY` remains available during the transition, but JWT is now the preferred frontend auth model
 - production recommendation: set a dedicated `JwtAuth:SigningKey` with at least 32 bytes
 - if `JwtAuth:SigningKey` is shorter or missing, the backend derives a stable 256-bit HMAC key from the configured secret so `POST /api/auth/token` does not fail on HS256 key length
+
+Stage 14 live odds list-view optimization:
+- `GET /api/fixtures/query` supports `includeLiveOddsSummary=true`
+- each returned `FixtureDto` can now include `LiveOddsSummary`
+- new batch endpoint: `POST /api/odds/live/summary`
+- list summaries are cache-only reads:
+  - live summary when local live odds exist
+  - pre-match fallback when live odds are missing
+  - `none` when neither exists
+- list reads do not trigger per-row on-demand live odds sync
+- SignalR now also publishes `LiveOddsSummaryUpdated`
+- hub convenience methods now include:
+  - `JoinFixtures(apiFixtureIds[])`
+  - `LeaveFixtures(apiFixtureIds[])`
+  - `JoinLiveFeed()`
+  - `LeaveLiveFeed()`

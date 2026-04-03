@@ -36,4 +36,5 @@ public class FixtureDto
 
     public int? HomeGoals { get; set; }
     public int? AwayGoals { get; set; }
+    public FixtureLiveOddsSummaryDto? LiveOddsSummary { get; set; }
 }

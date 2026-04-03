@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
+using SmartBets.Dtos;
 using SmartBets.Entities;
 using SmartBets.Enums;
 using SmartBets.Services;
@@ -159,6 +160,27 @@ public class OddsController : ControllerBase
                 Message = "No live odds found for this fixture."
             });
         }
+
+        return Ok(result);
+    }
+
+    [HttpPost("live/summary")]
+    public async Task<IActionResult> GetLiveOddsSummary(
+        [FromBody] LiveOddsSummaryRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        var fixtureIds = request.FixtureIds
+            .Where(x => x > 0)
+            .Distinct()
+            .Take(200)
+            .ToList();
+
+        if (fixtureIds.Count == 0)
+            return BadRequest("Provide at least one positive fixtureId.");
+
+        var result = await _liveOddsService.GetFixtureOddsSummariesAsync(
+            fixtureIds,
+            cancellationToken);
 
         return Ok(result);
     }

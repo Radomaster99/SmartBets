@@ -2593,3 +2593,47 @@ Signing key note:
 - preferred production setup is a dedicated `JwtAuth:SigningKey` with at least 32 bytes
 - if the configured secret is shorter, the backend derives a stable 256-bit HMAC key from it
 - this keeps HS256 valid even when the legacy API key is shorter than 256 bits
+
+## 31. Live Odds List Optimization
+
+`GET /api/fixtures/query` now supports:
+- `includeLiveOddsSummary=true`
+
+When enabled, each `FixtureDto` may include:
+- `LiveOddsSummary`
+
+`LiveOddsSummary` fields:
+- `ApiFixtureId`
+- `LeagueApiId`
+- `Source`
+  - `live`
+  - `prematch`
+  - `none`
+- `CollectedAtUtc`
+- `BestHomeOdd`
+- `BestHomeBookmaker`
+- `BestDrawOdd`
+- `BestDrawBookmaker`
+- `BestAwayOdd`
+- `BestAwayBookmaker`
+
+Important behavior:
+- this is a cache-only read path intended for list views
+- it does not trigger per-row on-demand live odds sync
+- if live odds are missing, the backend falls back to stored pre-match best odds
+
+Additional batch endpoint:
+- `POST /api/odds/live/summary`
+
+Request body:
+- `fixtureIds`
+
+SignalR additions:
+- event: `LiveOddsSummaryUpdated`
+- hub methods:
+  - `JoinFixtures(apiFixtureIds[])`
+  - `LeaveFixtures(apiFixtureIds[])`
+  - `JoinLiveFeed()`
+  - `LeaveLiveFeed()`
+
+`LiveOddsSummaryUpdated` is emitted only when the effective summary changes.

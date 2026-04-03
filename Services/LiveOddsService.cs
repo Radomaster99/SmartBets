@@ -125,6 +125,8 @@ public class LiveOddsService
             return result;
 
         var apiFixtureIds = remoteRows.Select(x => x.Fixture.Id).Distinct().ToList();
+        var summaryBeforeByApiFixtureId = (await GetFixtureOddsSummariesAsync(apiFixtureIds, cancellationToken))
+            .ToDictionary(x => x.ApiFixtureId);
         var localFixtures = await _dbContext.Fixtures
             .AsNoTracking()
             .Include(x => x.League)
@@ -296,6 +298,10 @@ public class LiveOddsService
 
         await _syncStateService.SetLastSyncedAtBatchAsync(syncStateItems, cancellationToken);
         await BroadcastLiveOddsUpdatesAsync(changedFixturesByApiId.Values, cancellationToken);
+        await BroadcastLiveOddsSummaryUpdatesAsync(
+            changedFixturesByApiId.Keys.ToList(),
+            summaryBeforeByApiFixtureId,
+            cancellationToken);
 
         return result;
     }
@@ -429,6 +435,94 @@ public class LiveOddsService
             bookmakerId,
             latestOnly,
             cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<FixtureLiveOddsSummaryDto>> GetFixtureOddsSummariesAsync(
+        IReadOnlyCollection<long> apiFixtureIds,
+        CancellationToken cancellationToken = default)
+    {
+        var distinctApiFixtureIds = apiFixtureIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList();
+
+        if (distinctApiFixtureIds.Count == 0)
+            return Array.Empty<FixtureLiveOddsSummaryDto>();
+
+        var fixtures = await _dbContext.Fixtures
+            .AsNoTracking()
+            .Where(x => distinctApiFixtureIds.Contains(x.ApiFixtureId))
+            .Select(x => new FixtureSummaryContext
+            {
+                FixtureId = x.Id,
+                ApiFixtureId = x.ApiFixtureId,
+                LeagueApiId = x.League.ApiLeagueId,
+                HomeTeamName = x.HomeTeam.Name,
+                AwayTeamName = x.AwayTeam.Name
+            })
+            .ToListAsync(cancellationToken);
+
+        if (fixtures.Count == 0)
+            return Array.Empty<FixtureLiveOddsSummaryDto>();
+
+        var fixtureIds = fixtures.Select(x => x.FixtureId).ToList();
+
+        var liveRows = await _dbContext.LiveOdds
+            .AsNoTracking()
+            .Where(x => fixtureIds.Contains(x.FixtureId))
+            .Where(x => x.BetName == PreMatchOddsService.DefaultMarketName)
+            .Select(x => new LiveOddsSummaryRow
+            {
+                FixtureId = x.FixtureId,
+                ApiBookmakerId = x.Bookmaker.ApiBookmakerId,
+                Bookmaker = x.Bookmaker.Name,
+                OutcomeLabel = x.OutcomeLabel,
+                Odd = x.Odd,
+                CollectedAtUtc = x.CollectedAtUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        var preMatchRows = await _dbContext.PreMatchOdds
+            .AsNoTracking()
+            .Where(x => fixtureIds.Contains(x.FixtureId))
+            .Where(x => x.MarketName == PreMatchOddsService.DefaultMarketName)
+            .Select(x => new PreMatchOddsSummaryRow
+            {
+                FixtureId = x.FixtureId,
+                ApiBookmakerId = x.Bookmaker.ApiBookmakerId,
+                Bookmaker = x.Bookmaker.Name,
+                HomeOdd = x.HomeOdd,
+                DrawOdd = x.DrawOdd,
+                AwayOdd = x.AwayOdd,
+                CollectedAtUtc = x.CollectedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        var liveLatestRows = liveRows
+            .GroupBy(x => new { x.FixtureId, x.ApiBookmakerId })
+            .SelectMany(group =>
+            {
+                var latestCollectedAtUtc = group.Max(x => x.CollectedAtUtc);
+                return group.Where(x => x.CollectedAtUtc == latestCollectedAtUtc);
+            })
+            .ToList();
+
+        var preMatchLatestRows = preMatchRows
+            .GroupBy(x => new { x.FixtureId, x.ApiBookmakerId })
+            .Select(group => group
+                .OrderByDescending(x => x.CollectedAtUtc)
+                .First())
+            .ToList();
+
+        var result = fixtures
+            .OrderBy(x => x.ApiFixtureId)
+            .Select(fixture => BuildFixtureOddsSummary(
+                fixture,
+                liveLatestRows.Where(x => x.FixtureId == fixture.FixtureId).ToList(),
+                preMatchLatestRows.Where(x => x.FixtureId == fixture.FixtureId).ToList()))
+            .ToList();
+
+        return result;
     }
 
     public async Task<IReadOnlyList<OddDto>> GetMatchWinnerOddsAsync(
@@ -638,6 +732,45 @@ public class LiveOddsService
         }
     }
 
+    private async Task BroadcastLiveOddsSummaryUpdatesAsync(
+        IReadOnlyCollection<long> apiFixtureIds,
+        IReadOnlyDictionary<long, FixtureLiveOddsSummaryDto> summariesBeforeByApiFixtureId,
+        CancellationToken cancellationToken)
+    {
+        if (apiFixtureIds.Count == 0)
+            return;
+
+        var summariesAfter = await GetFixtureOddsSummariesAsync(apiFixtureIds, cancellationToken);
+        foreach (var summary in summariesAfter)
+        {
+            summariesBeforeByApiFixtureId.TryGetValue(summary.ApiFixtureId, out var previousSummary);
+            if (!HasSummaryChanged(previousSummary, summary))
+                continue;
+
+            try
+            {
+                await _hubContext.Clients
+                    .Group(LiveOddsHub.GetFixtureGroup(summary.ApiFixtureId))
+                    .SendAsync(LiveOddsHub.LiveOddsSummaryUpdatedEventName, summary, cancellationToken);
+
+                await _hubContext.Clients
+                    .Group(LiveOddsHub.GetLeagueGroup(summary.LeagueApiId))
+                    .SendAsync(LiveOddsHub.LiveOddsSummaryUpdatedEventName, summary, cancellationToken);
+
+                await _hubContext.Clients
+                    .Group(LiveOddsHub.LiveFeedGroup)
+                    .SendAsync(LiveOddsHub.LiveOddsSummaryUpdatedEventName, summary, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to broadcast live odds summary update for fixture {ApiFixtureId}.",
+                    summary.ApiFixtureId);
+            }
+        }
+    }
+
     private static bool ShouldAttemptLiveOddsCatchUp(StoredFixtureScope fixture)
     {
         var bucket = FixtureStatusMapper.GetStateBucket(fixture.Status);
@@ -647,6 +780,168 @@ public class LiveOddsService
 
         return fixture.KickoffAt >= nowUtc.AddHours(-4) &&
                fixture.KickoffAt <= nowUtc.AddMinutes(15);
+    }
+
+    private static FixtureLiveOddsSummaryDto BuildFixtureOddsSummary(
+        FixtureSummaryContext fixture,
+        IReadOnlyList<LiveOddsSummaryRow> liveRows,
+        IReadOnlyList<PreMatchOddsSummaryRow> preMatchRows)
+    {
+        var liveSummary = BuildLiveSummary(fixture, liveRows);
+        if (liveSummary is not null)
+            return liveSummary;
+
+        var preMatchSummary = BuildPreMatchSummary(fixture, preMatchRows);
+        if (preMatchSummary is not null)
+            return preMatchSummary;
+
+        return new FixtureLiveOddsSummaryDto
+        {
+            ApiFixtureId = fixture.ApiFixtureId,
+            LeagueApiId = fixture.LeagueApiId,
+            Source = "none"
+        };
+    }
+
+    private static FixtureLiveOddsSummaryDto? BuildLiveSummary(
+        FixtureSummaryContext fixture,
+        IReadOnlyList<LiveOddsSummaryRow> rows)
+    {
+        if (rows.Count == 0)
+            return null;
+
+        var summary = new FixtureLiveOddsSummaryDto
+        {
+            ApiFixtureId = fixture.ApiFixtureId,
+            LeagueApiId = fixture.LeagueApiId,
+            Source = "live",
+            CollectedAtUtc = rows.Max(x => x.CollectedAtUtc)
+        };
+
+        foreach (var bookmakerGroup in rows.GroupBy(x => x.Bookmaker))
+        {
+            foreach (var row in bookmakerGroup)
+            {
+                if (IsHomeOutcome(row.OutcomeLabel, fixture.HomeTeamName))
+                {
+                    ApplyBestOdd(row.Odd, row.Bookmaker, summary.BestHomeOdd, summary.BestHomeBookmaker,
+                        (odd, bookmaker) =>
+                        {
+                            summary.BestHomeOdd = odd;
+                            summary.BestHomeBookmaker = bookmaker;
+                        });
+                }
+                else if (IsDrawOutcome(row.OutcomeLabel))
+                {
+                    ApplyBestOdd(row.Odd, row.Bookmaker, summary.BestDrawOdd, summary.BestDrawBookmaker,
+                        (odd, bookmaker) =>
+                        {
+                            summary.BestDrawOdd = odd;
+                            summary.BestDrawBookmaker = bookmaker;
+                        });
+                }
+                else if (IsAwayOutcome(row.OutcomeLabel, fixture.AwayTeamName))
+                {
+                    ApplyBestOdd(row.Odd, row.Bookmaker, summary.BestAwayOdd, summary.BestAwayBookmaker,
+                        (odd, bookmaker) =>
+                        {
+                            summary.BestAwayOdd = odd;
+                            summary.BestAwayBookmaker = bookmaker;
+                        });
+                }
+            }
+        }
+
+        return HasAnySummaryValue(summary)
+            ? summary
+            : null;
+    }
+
+    private static FixtureLiveOddsSummaryDto? BuildPreMatchSummary(
+        FixtureSummaryContext fixture,
+        IReadOnlyList<PreMatchOddsSummaryRow> rows)
+    {
+        if (rows.Count == 0)
+            return null;
+
+        var summary = new FixtureLiveOddsSummaryDto
+        {
+            ApiFixtureId = fixture.ApiFixtureId,
+            LeagueApiId = fixture.LeagueApiId,
+            Source = "prematch",
+            CollectedAtUtc = rows.Max(x => x.CollectedAtUtc)
+        };
+
+        foreach (var row in rows)
+        {
+            ApplyBestOdd(row.HomeOdd, row.Bookmaker, summary.BestHomeOdd, summary.BestHomeBookmaker,
+                (odd, bookmaker) =>
+                {
+                    summary.BestHomeOdd = odd;
+                    summary.BestHomeBookmaker = bookmaker;
+                });
+            ApplyBestOdd(row.DrawOdd, row.Bookmaker, summary.BestDrawOdd, summary.BestDrawBookmaker,
+                (odd, bookmaker) =>
+                {
+                    summary.BestDrawOdd = odd;
+                    summary.BestDrawBookmaker = bookmaker;
+                });
+            ApplyBestOdd(row.AwayOdd, row.Bookmaker, summary.BestAwayOdd, summary.BestAwayBookmaker,
+                (odd, bookmaker) =>
+                {
+                    summary.BestAwayOdd = odd;
+                    summary.BestAwayBookmaker = bookmaker;
+                });
+        }
+
+        return HasAnySummaryValue(summary)
+            ? summary
+            : null;
+    }
+
+    private static void ApplyBestOdd(
+        decimal? candidateOdd,
+        string bookmaker,
+        decimal? currentOdd,
+        string? currentBookmaker,
+        Action<decimal?, string?> apply)
+    {
+        if (!candidateOdd.HasValue)
+            return;
+
+        if (!currentOdd.HasValue || candidateOdd > currentOdd)
+        {
+            apply(candidateOdd, bookmaker);
+            return;
+        }
+
+        if (candidateOdd == currentOdd &&
+            string.Compare(bookmaker, currentBookmaker, StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            apply(candidateOdd, bookmaker);
+        }
+    }
+
+    private static bool HasAnySummaryValue(FixtureLiveOddsSummaryDto summary)
+    {
+        return summary.BestHomeOdd.HasValue ||
+               summary.BestDrawOdd.HasValue ||
+               summary.BestAwayOdd.HasValue;
+    }
+
+    private static bool HasSummaryChanged(FixtureLiveOddsSummaryDto? before, FixtureLiveOddsSummaryDto after)
+    {
+        if (before is null)
+            return true;
+
+        return before.Source != after.Source ||
+               before.CollectedAtUtc != after.CollectedAtUtc ||
+               before.BestHomeOdd != after.BestHomeOdd ||
+               !string.Equals(before.BestHomeBookmaker, after.BestHomeBookmaker, StringComparison.Ordinal) ||
+               before.BestDrawOdd != after.BestDrawOdd ||
+               !string.Equals(before.BestDrawBookmaker, after.BestDrawBookmaker, StringComparison.Ordinal) ||
+               before.BestAwayOdd != after.BestAwayOdd ||
+               !string.Equals(before.BestAwayBookmaker, after.BestAwayBookmaker, StringComparison.Ordinal);
     }
 
     private static bool TryMapMatchWinnerOdds(
@@ -784,6 +1079,15 @@ public class LiveOddsService
         public string? Status { get; set; }
     }
 
+    private sealed class FixtureSummaryContext
+    {
+        public long FixtureId { get; set; }
+        public long ApiFixtureId { get; set; }
+        public long LeagueApiId { get; set; }
+        public string HomeTeamName { get; set; } = string.Empty;
+        public string AwayTeamName { get; set; } = string.Empty;
+    }
+
     private sealed class LiveOddSnapshotKey
     {
         public long FixtureId { get; set; }
@@ -796,6 +1100,27 @@ public class LiveOddsService
         public bool? Stopped { get; set; }
         public bool? Blocked { get; set; }
         public bool? Finished { get; set; }
+        public DateTime CollectedAtUtc { get; set; }
+    }
+
+    private sealed class LiveOddsSummaryRow
+    {
+        public long FixtureId { get; set; }
+        public long ApiBookmakerId { get; set; }
+        public string Bookmaker { get; set; } = string.Empty;
+        public string OutcomeLabel { get; set; } = string.Empty;
+        public decimal? Odd { get; set; }
+        public DateTime CollectedAtUtc { get; set; }
+    }
+
+    private sealed class PreMatchOddsSummaryRow
+    {
+        public long FixtureId { get; set; }
+        public long ApiBookmakerId { get; set; }
+        public string Bookmaker { get; set; } = string.Empty;
+        public decimal? HomeOdd { get; set; }
+        public decimal? DrawOdd { get; set; }
+        public decimal? AwayOdd { get; set; }
         public DateTime CollectedAtUtc { get; set; }
     }
 

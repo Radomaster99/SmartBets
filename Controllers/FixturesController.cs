@@ -331,6 +331,7 @@ public class FixturesController : ControllerBase
         [FromQuery] string direction = "asc",
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
+        [FromQuery] bool includeLiveOddsSummary = false,
         CancellationToken cancellationToken = default)
     {
         var validationError = ValidateDateFilters(date, from, to);
@@ -354,9 +355,27 @@ public class FixturesController : ControllerBase
             ? 0
             : (int)Math.Ceiling(totalItems / (double)pageSize);
 
+        var items = fixtures.Select(MapFixture).ToList();
+
+        if (includeLiveOddsSummary && items.Count > 0)
+        {
+            var summaries = await _liveOddsService.GetFixtureOddsSummariesAsync(
+                items.Select(x => x.ApiFixtureId).ToList(),
+                cancellationToken);
+
+            var summaryByApiFixtureId = summaries.ToDictionary(x => x.ApiFixtureId);
+            foreach (var item in items)
+            {
+                if (summaryByApiFixtureId.TryGetValue(item.ApiFixtureId, out var summary))
+                {
+                    item.LiveOddsSummary = summary;
+                }
+            }
+        }
+
         return Ok(new PagedResultDto<FixtureDto>
         {
-            Items = fixtures.Select(MapFixture).ToList(),
+            Items = items,
             Page = page,
             PageSize = pageSize,
             TotalItems = totalItems,
