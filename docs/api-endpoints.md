@@ -2024,6 +2024,41 @@ Query parameters:
 Response:
 - same payload as `GET /api/odds/live`
 
+### 26.7 `SignalR /hubs/live-odds`
+
+Purpose:
+- pushes realtime live odds updates after changed snapshots are stored
+- complements the REST live odds endpoints, it does not replace them
+
+Recommended frontend flow:
+- initial snapshot through `GET /api/fixtures/{apiFixtureId}/odds/live`
+- realtime updates through SignalR on `/hubs/live-odds`
+- subscribe with `JoinFixture(apiFixtureId)`
+
+Hub route:
+- `/hubs/live-odds`
+
+Hub methods:
+- `JoinFixture(long apiFixtureId)`
+- `LeaveFixture(long apiFixtureId)`
+- `JoinLeague(long leagueId)`
+- `LeaveLeague(long leagueId)`
+
+Event name:
+- `LiveOddsUpdated`
+
+Payload:
+- `FixtureId`
+- `ApiFixtureId`
+- `LeagueApiId`
+- `CollectedAtUtc`
+- `Markets`
+
+Notes:
+- `Markets` uses the same `LiveOddsMarketDto` shape returned by the REST endpoint
+- broadcasts happen only when the live odds sync writes changed snapshots
+- browser clients can pass the existing API token through `access_token` on the hub connection
+
 ### 26.7 Sync Status Additions
 
 `GET /api/sync-status` now also exposes:
@@ -2524,3 +2559,32 @@ This means:
 - older seasons still exist in the database
 - older seasons can still be imported on demand
 - older seasons are not continuously re-polled by the automatic jobs
+
+## 30. JWT Auth
+
+The backend now supports JWT as the preferred auth model for both REST and SignalR.
+
+Accepted auth methods:
+- `Authorization: Bearer {jwt}`
+- legacy bridge: `X-API-KEY: {token}`
+
+JWT bridge endpoints:
+- `POST /api/auth/token`
+- `GET /api/auth/me`
+
+`POST /api/auth/token`:
+- requires an already authenticated caller
+- can be called with the legacy API key during the transition
+- returns a signed JWT access token for frontend use
+
+SignalR auth:
+- hub route: `/hubs/live-odds`
+- browser clients should pass the JWT through `access_token`
+- example negotiate path:
+  - `POST /hubs/live-odds/negotiate?negotiateVersion=1&access_token={jwt}`
+
+Relevant config:
+- `JwtAuth:Issuer`
+- `JwtAuth:Audience`
+- `JwtAuth:SigningKey`
+- `JwtAuth:AccessTokenMinutes`

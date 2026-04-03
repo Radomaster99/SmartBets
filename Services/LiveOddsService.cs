@@ -1,8 +1,10 @@
 using System.Globalization;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Dtos;
 using SmartBets.Entities;
+using SmartBets.Hubs;
 
 namespace SmartBets.Services;
 
@@ -11,15 +13,21 @@ public class LiveOddsService
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
     private readonly SyncStateService _syncStateService;
+    private readonly IHubContext<LiveOddsHub> _hubContext;
+    private readonly ILogger<LiveOddsService> _logger;
 
     public LiveOddsService(
         AppDbContext dbContext,
         FootballApiService apiService,
-        SyncStateService syncStateService)
+        SyncStateService syncStateService,
+        IHubContext<LiveOddsHub> hubContext,
+        ILogger<LiveOddsService> logger)
     {
         _dbContext = dbContext;
         _apiService = apiService;
         _syncStateService = syncStateService;
+        _hubContext = hubContext;
+        _logger = logger;
     }
 
     public async Task<LiveBetTypesSyncResultDto> SyncLiveBetTypesAsync(CancellationToken cancellationToken = default)
@@ -161,6 +169,7 @@ public class LiveOddsService
             .ToDictionary(x => x.Key, x => x.First());
 
         var touchedScopes = new HashSet<string>(StringComparer.Ordinal);
+        var changedFixturesByApiId = new Dictionary<long, FixtureScope>();
         var collectedAtUtc = DateTime.UtcNow;
 
         foreach (var remoteFixture in remoteRows)
@@ -262,6 +271,7 @@ public class LiveOddsService
                             CollectedAtUtc = collectedAtUtc
                         };
 
+                        changedFixturesByApiId[fixture.ApiFixtureId] = fixture;
                         result.SnapshotsInserted++;
                     }
                 }
@@ -284,6 +294,7 @@ public class LiveOddsService
             .ToList();
 
         await _syncStateService.SetLastSyncedAtBatchAsync(syncStateItems, cancellationToken);
+        await BroadcastLiveOddsUpdatesAsync(changedFixturesByApiId.Values, cancellationToken);
 
         return result;
     }
@@ -466,6 +477,36 @@ public class LiveOddsService
             : odds.Max(x => x.CollectedAtUtc);
     }
 
+    public async Task<LiveOddsUpdatedDto?> GetLiveOddsUpdateAsync(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await ResolveFixtureAsync(
+            fixtureId: null,
+            apiFixtureId: apiFixtureId,
+            cancellationToken);
+
+        if (fixture is null)
+            return null;
+
+        var markets = await GetLiveOddsAsync(
+            apiFixtureId: apiFixtureId,
+            latestOnly: true,
+            cancellationToken: cancellationToken);
+
+        if (markets.Count == 0)
+            return null;
+
+        return new LiveOddsUpdatedDto
+        {
+            FixtureId = fixture.FixtureId,
+            ApiFixtureId = fixture.ApiFixtureId,
+            LeagueApiId = fixture.LeagueApiId,
+            CollectedAtUtc = markets.Max(x => x.CollectedAtUtc),
+            Markets = markets
+        };
+    }
+
     private async Task<FixtureScope?> ResolveFixtureAsync(
         long? fixtureId,
         long? apiFixtureId,
@@ -495,6 +536,36 @@ public class LiveOddsService
             query = query.Where(x => x.ApiFixtureId == apiFixtureId.Value);
 
         return await query.FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task BroadcastLiveOddsUpdatesAsync(
+        IEnumerable<FixtureScope> changedFixtures,
+        CancellationToken cancellationToken)
+    {
+        foreach (var fixture in changedFixtures.OrderBy(x => x.ApiFixtureId))
+        {
+            try
+            {
+                var payload = await GetLiveOddsUpdateAsync(fixture.ApiFixtureId, cancellationToken);
+                if (payload is null)
+                    continue;
+
+                await _hubContext.Clients
+                    .Group(LiveOddsHub.GetFixtureGroup(fixture.ApiFixtureId))
+                    .SendAsync(LiveOddsHub.LiveOddsUpdatedEventName, payload, cancellationToken);
+
+                await _hubContext.Clients
+                    .Group(LiveOddsHub.GetLeagueGroup(fixture.LeagueApiId))
+                    .SendAsync(LiveOddsHub.LiveOddsUpdatedEventName, payload, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to broadcast live odds update for fixture {ApiFixtureId}. Live odds remain available via REST.",
+                    fixture.ApiFixtureId);
+            }
+        }
     }
 
     private static bool TryMapMatchWinnerOdds(

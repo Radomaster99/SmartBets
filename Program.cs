@@ -1,11 +1,26 @@
-﻿using System.Text.Json.Serialization;
+using System.Text;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SmartBets.Data;
+using SmartBets.Hubs;
 using SmartBets.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+var apiKeyToken = builder.Configuration["ApiAuth:Token"];
+var jwtSigningKey = builder.Configuration["JwtAuth:SigningKey"];
+var resolvedJwtSigningKey = !string.IsNullOrWhiteSpace(jwtSigningKey)
+    ? jwtSigningKey
+    : apiKeyToken;
+var effectiveJwtSigningKey = string.IsNullOrWhiteSpace(resolvedJwtSigningKey)
+    ? "development-only-placeholder-signing-key"
+    : resolvedJwtSigningKey;
+var authEnabled = !string.IsNullOrWhiteSpace(apiKeyToken) || !string.IsNullOrWhiteSpace(jwtSigningKey);
 
 // Controllers + JSON
 builder.Services.AddControllers()
@@ -13,8 +28,9 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
+builder.Services.AddSignalR();
 
-// Swagger + API Key auth
+// Swagger + auth
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -33,6 +49,16 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "ApiKeyScheme"
     });
 
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -42,6 +68,21 @@ builder.Services.AddSwaggerGen(options =>
                 {
                     Type = ReferenceType.SecurityScheme,
                     Id = "ApiKey"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
                 }
             },
             Array.Empty<string>()
@@ -59,9 +100,89 @@ builder.Services.Configure<LiveAutomationOptions>(builder.Configuration.GetSecti
 builder.Services.Configure<CoreDataAutomationOptions>(builder.Configuration.GetSection("CoreDataAutomation"));
 builder.Services.Configure<ApiFootballClientOptions>(builder.Configuration.GetSection("ApiFootballClient"));
 builder.Services.Configure<DataRetentionOptions>(builder.Configuration.GetSection("DataRetention"));
+builder.Services.Configure<JwtAuthOptions>(builder.Configuration.GetSection("JwtAuth"));
 builder.Services.AddSingleton<ApiFootballQuotaTelemetryService>();
 builder.Services.AddSingleton<CoreLeagueCatalogState>();
 builder.Services.AddSingleton<CoreAutomationQuotaManager>();
+builder.Services.AddSingleton<JwtTokenService>();
+
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = "SmartAuth";
+        options.DefaultChallengeScheme = "SmartAuth";
+    })
+    .AddPolicyScheme("SmartAuth", "JWT or API key", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+        {
+            var authorization = context.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrWhiteSpace(authorization) &&
+                authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                return JwtBearerDefaults.AuthenticationScheme;
+            }
+
+            if (context.Request.Path.StartsWithSegments(LiveOddsHub.Route))
+            {
+                var accessToken = context.Request.Query["access_token"].FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(accessToken))
+                {
+                    return LooksLikeJwt(accessToken)
+                        ? JwtBearerDefaults.AuthenticationScheme
+                        : ApiKeyAuthenticationHandler.SchemeName;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(context.Request.Headers["X-API-KEY"]))
+                return ApiKeyAuthenticationHandler.SchemeName;
+
+            return JwtBearerDefaults.AuthenticationScheme;
+        };
+    })
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(effectiveJwtSigningKey)),
+            ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["JwtAuth:Issuer"] ?? "SmartBets",
+            ValidateAudience = true,
+            ValidAudience = builder.Configuration["JwtAuth:Audience"] ?? "SmartBets.Frontend",
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.HttpContext.Request.Path.StartsWithSegments(LiveOddsHub.Route))
+                {
+                    var accessToken = context.Request.Query["access_token"].FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(accessToken) && LooksLikeJwt(accessToken))
+                    {
+                        context.Token = accessToken;
+                    }
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+    })
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationHandler.SchemeName,
+        _ => { });
+
+builder.Services.AddAuthorization(options =>
+{
+    if (!authEnabled)
+        return;
+
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .AddAuthenticationSchemes("SmartAuth")
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 // Services
 builder.Services.AddScoped<CountrySyncService>();
@@ -124,7 +245,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// 🔥 Global exception handler
+// Global exception handler
 app.UseExceptionHandler(errorApp =>
 {
     errorApp.Run(async context =>
@@ -198,53 +319,29 @@ app.UseExceptionHandler(errorApp =>
 var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
 app.Urls.Add($"http://*:{port}");
 
-// Swagger (public)
+// Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// CORS
+// HTTP pipeline
 app.UseCors("FrontendPolicy");
-
-// 🔐 API Key Middleware
-app.Use(async (context, next) =>
-{
-    var expectedToken = builder.Configuration["ApiAuth:Token"];
-
-    // ако няма token → allow (dev)
-    if (string.IsNullOrWhiteSpace(expectedToken))
-    {
-        await next();
-        return;
-    }
-
-    var path = context.Request.Path.Value ?? string.Empty;
-
-    // публични endpoints
-    if (path.StartsWith("/swagger") || path.StartsWith("/ping"))
-    {
-        await next();
-        return;
-    }
-
-    var requestToken = context.Request.Headers["X-API-KEY"].FirstOrDefault();
-
-    if (requestToken != expectedToken)
-    {
-        context.Response.StatusCode = 401;
-        await context.Response.WriteAsync("Unauthorized - Invalid or missing API Key");
-        return;
-    }
-
-    await next();
-});
-
+app.UseAuthentication();
 app.UseAuthorization();
 
 // Endpoints
 app.MapControllers();
+var liveOddsHub = app.MapHub<LiveOddsHub>(LiveOddsHub.Route);
+if (authEnabled)
+{
+    liveOddsHub.RequireAuthorization();
+}
+else
+{
+    liveOddsHub.AllowAnonymous();
+}
 
-// ✅ публичен health check
-app.MapGet("/ping", () => "pong");
+// Public health check
+app.MapGet("/ping", () => "pong").AllowAnonymous();
 
 app.Run();
 
@@ -262,4 +359,9 @@ static bool IsRateLimitError(InvalidOperationException exception)
 static bool IsNotFoundLike(InvalidOperationException exception)
 {
     return exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool LooksLikeJwt(string value)
+{
+    return value.Count(x => x == '.') == 2;
 }

@@ -176,3 +176,19 @@ Stage 11 automation window + historical bootstrap split:
 - historical data from `2023+` is imported through:
   - `POST /api/preload/historical`
 - the historical bootstrap can optionally exclude the active automation window, so old seasons are filled once and then left frozen unless you request another manual refresh
+
+Stage 12 SignalR live odds push:
+- new hub route: `/hubs/live-odds`
+- subscribe by fixture with `JoinFixture(apiFixtureId)`
+- optional subscribe by league with `JoinLeague(leagueId)`
+- event name: `LiveOddsUpdated`
+- live odds sync now broadcasts only after changed snapshots are persisted
+- browser clients can authenticate with the existing API token through `?access_token=...`
+
+Stage 13 JWT auth for REST and SignalR:
+- REST endpoints now accept `Authorization: Bearer {jwt}`
+- SignalR hub `/hubs/live-odds` accepts JWT through `?access_token=...`
+- new bridge endpoint: `POST /api/auth/token`
+- `POST /api/auth/token` can mint a JWT for an already authenticated caller, for example one using the legacy `X-API-KEY`
+- new debug endpoint: `GET /api/auth/me`
+- legacy `X-API-KEY` remains available during the transition, but JWT is now the preferred frontend auth model
