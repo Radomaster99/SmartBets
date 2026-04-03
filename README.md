@@ -102,24 +102,15 @@ Stage 7 live odds + fixture batch sync:
 - migration: `Migrations/20260331190852_Stage7LiveOddsAndFixtureBatchSync.cs`
 - SQL fallback: `sql/stage7_live_odds_and_fixture_batch_sync_manual.sql`
 
-Stage 8 internal live automation:
-- built-in `BackgroundService` orchestrates live refreshes without external cron
-- configuration section: `LiveAutomation`
-- worker has two modes:
-  - active mode when there are live, just-started or post-finish fixtures in tracked leagues
-  - idle mode when there is nothing urgent to refresh
-- default pacing is quota-aware:
-  - live status heartbeat every 30s
-  - match-center refresh every 60s
-  - players only every 180s and only when live fixture count is small
-  - team statistics refresh every 24h for active supported leagues
-- live odds auto-sync is intentionally opt-in and disabled by default in config
-- no new database migration is required for Stage 8
+Stage 8 legacy live automation:
+- the old `LiveAutomation` worker has been removed from the runtime
+- all active automatic refresh orchestration now runs through `CoreDataAutomation`
+- no new database migration is required for this cleanup
 
 Stage 9 production hardening:
 - runtime API-Football quota telemetry is exposed through `GET /api/sync-status`
 - outbound API-Football calls now use minimum spacing plus low/critical quota backoff
-- live automation suppresses expensive refreshes first when quota is tight
+- core automation suppresses expensive refreshes first when quota is tight
 - `POST /api/bookmakers/sync` now refreshes from the local odds cache instead of re-downloading the heavy odds catalog
 - new retention worker trims old `sync_errors`, `live_odds`, `pre_match_odds` and derived odds analytics rows
 - new config sections:

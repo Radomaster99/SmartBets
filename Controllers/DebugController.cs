@@ -78,6 +78,14 @@ public class DebugController : ControllerBase
             bookmakerId,
             cancellationToken);
 
+        var requestedBookmakerName = bookmakerId.HasValue
+            ? await _dbContext.Bookmakers
+                .AsNoTracking()
+                .Where(x => x.ApiBookmakerId == bookmakerId.Value)
+                .Select(x => x.Name)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
         var fixtureIds = response
             .Select(x => x.Fixture.Id)
             .Distinct()
@@ -138,7 +146,9 @@ public class DebugController : ControllerBase
                             new
                             {
                                 Id = 0L,
-                                Name = ProviderLiveFeedBookmakerName,
+                                Name = !string.IsNullOrWhiteSpace(requestedBookmakerName)
+                                    ? requestedBookmakerName
+                                    : ProviderLiveFeedBookmakerName,
                                 Bets = x.Odds.Take(3).Select(z => new
                                 {
                                     z.Id,

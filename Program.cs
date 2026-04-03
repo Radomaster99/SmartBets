@@ -91,7 +91,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // HTTP client
 builder.Services.AddHttpClient<FootballApiService>();
-builder.Services.Configure<LiveAutomationOptions>(builder.Configuration.GetSection("LiveAutomation"));
 builder.Services.Configure<CoreDataAutomationOptions>(builder.Configuration.GetSection("CoreDataAutomation"));
 builder.Services.Configure<ApiFootballClientOptions>(builder.Configuration.GetSection("ApiFootballClient"));
 builder.Services.Configure<DataRetentionOptions>(builder.Configuration.GetSection("DataRetention"));
@@ -202,7 +201,6 @@ builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
 builder.Services.AddScoped<HistoricalBootstrapService>();
 builder.Services.AddScoped<StandingsSyncService>();
-builder.Services.AddScoped<LiveAutomationOrchestrator>();
 builder.Services.AddScoped<CoreDataAutomationOrchestrator>();
 builder.Services.AddScoped<CoreAutomationCatalogRefreshJobService>();
 builder.Services.AddScoped<CoreAutomationTeamsRollingJobService>();

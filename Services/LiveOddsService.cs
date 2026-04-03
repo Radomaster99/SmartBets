@@ -158,6 +158,14 @@ public class LiveOddsService
         if (remoteRows.Count == 0)
             return result;
 
+        var requestedBookmakerName = bookmakerId.HasValue
+            ? await _dbContext.Bookmakers
+                .AsNoTracking()
+                .Where(x => x.ApiBookmakerId == bookmakerId.Value)
+                .Select(x => x.Name)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
         await EnsureLiveBetTypesForRemoteRowsAsync(remoteRows, result.ExecutedAtUtc, cancellationToken);
 
         var apiFixtureIds = remoteRows.Select(x => x.Fixture.Id).Distinct().ToList();
@@ -229,7 +237,7 @@ public class LiveOddsService
             result.FixturesMatched++;
             touchedScopes.Add(BuildLeagueScopeKey(fixture.LeagueApiId, fixture.Season));
 
-            foreach (var apiBookmaker in GetProviderBookmakers(remoteFixture))
+            foreach (var apiBookmaker in GetProviderBookmakers(remoteFixture, bookmakerId, requestedBookmakerName))
             {
                 result.BookmakersProcessed++;
 
@@ -405,6 +413,13 @@ public class LiveOddsService
         if (rows.Count == 0)
             return Array.Empty<LiveOddsMarketDto>();
 
+        if (rows.Any(x => x.ApiBookmakerId > 0))
+        {
+            rows = rows
+                .Where(x => x.ApiBookmakerId > 0)
+                .ToList();
+        }
+
         var grouped = rows
             .GroupBy(x => new { x.BookmakerId, x.ApiBookmakerId, x.Bookmaker, x.ApiBetId, x.BetName });
 
@@ -572,6 +587,13 @@ public class LiveOddsService
                 CollectedAtUtc = x.CollectedAtUtc
             })
             .ToListAsync(cancellationToken);
+
+        liveRows = liveRows
+            .GroupBy(x => x.FixtureId)
+            .SelectMany(group => group.Any(x => x.ApiBookmakerId > 0)
+                ? group.Where(x => x.ApiBookmakerId > 0)
+                : group)
+            .ToList();
 
         var preMatchRows = await _dbContext.PreMatchOdds
             .AsNoTracking()
@@ -1183,7 +1205,10 @@ public class LiveOddsService
         }
     }
 
-    private static IReadOnlyList<ProviderBookmakerScope> GetProviderBookmakers(ApiFootballLiveOddsFixtureItem fixture)
+    private static IReadOnlyList<ProviderBookmakerScope> GetProviderBookmakers(
+        ApiFootballLiveOddsFixtureItem fixture,
+        long? requestedBookmakerId = null,
+        string? requestedBookmakerName = null)
     {
         if (fixture.Bookmakers.Count > 0)
         {
@@ -1200,11 +1225,16 @@ public class LiveOddsService
 
         if (fixture.Odds.Count > 0)
         {
+            var bookmakerApiId = requestedBookmakerId ?? ProviderLiveFeedBookmakerApiId;
+            var bookmakerName = !string.IsNullOrWhiteSpace(requestedBookmakerName)
+                ? requestedBookmakerName.Trim()
+                : ProviderLiveFeedBookmakerName;
+
             return new[]
             {
                 new ProviderBookmakerScope(
-                    ProviderLiveFeedBookmakerApiId,
-                    ProviderLiveFeedBookmakerName,
+                    bookmakerApiId,
+                    bookmakerName,
                     fixture.Odds,
                     GetFixtureStopped(fixture),
                     GetFixtureBlocked(fixture),

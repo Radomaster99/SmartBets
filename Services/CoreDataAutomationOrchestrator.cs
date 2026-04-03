@@ -624,7 +624,26 @@ public class CoreDataAutomationOrchestrator
 
         var maxLiveLeagues = AdjustBatchSize(options.GetMaxLiveOddsLeaguesPerCycle(), quotaMode, 3, 1);
         var distinctLiveLeagueCount = snapshot.LiveLeagueSeasons.Select(x => x.LeagueApiId).Distinct().Count();
-        var desiredRequests = (betTypesDue ? 1 : 0) + (liveOddsDue ? Math.Min(distinctLiveLeagueCount, maxLiveLeagues) : 0);
+        var liveOddsRequestsPerLeague = 1;
+
+        if (liveOddsDue && options.TrackLiveOddsPerBookmaker)
+        {
+            var trackedBookmakerCount = await _oddsLiveJobService.GetTrackedBookmakerCountAsync(options, cancellationToken);
+            if (trackedBookmakerCount == 0)
+            {
+                _quotaManager.MarkSkipped(CoreAutomationJobNames.OddsLive, "no_tracked_bookmakers");
+                return;
+            }
+
+            liveOddsRequestsPerLeague = Math.Min(
+                trackedBookmakerCount,
+                options.GetMaxLiveOddsBookmakersPerLeaguePerCycle());
+        }
+
+        var desiredRequests = (betTypesDue ? 1 : 0) +
+                              (liveOddsDue
+                                  ? Math.Min(distinctLiveLeagueCount, maxLiveLeagues) * liveOddsRequestsPerLeague
+                                  : 0);
 
         if (desiredRequests == 0)
             return;
@@ -679,6 +698,9 @@ public class CoreDataAutomationOrchestrator
             var liveOddsResult = await _oddsLiveJobService.RunAsync(
                 orderedLiveLeagueSeasons,
                 remainingRequests,
+                options,
+                state,
+                nowUtc,
                 registerSync,
                 cancellationToken);
 
@@ -1029,6 +1051,7 @@ public sealed class CoreDataAutomationWorkerState
     public DateTime? LastLiveBetTypesRunUtc { get; set; }
     public DateTime? LastLiveOddsRunUtc { get; set; }
     public DateTime? LastRepairRunUtc { get; set; }
+    public Dictionary<string, DateTime> LastLiveOddsRunByLeagueBookmakerKey { get; } = new();
 }
 
 public sealed class CoreDataAutomationCycleResult

@@ -1998,7 +1998,9 @@ Behavior:
 - the live odds provider currently appears in two shapes and the backend accepts both:
   - legacy `bookmakers[].bets[].values`
   - direct `odds[].values`
-- when the provider omits bookmaker information and returns direct `odds[]`, the backend stores the rows under a synthetic bookmaker:
+- when the provider omits bookmaker information and returns direct `odds[]`, the backend stores the rows under a synthetic bookmaker unless the sync request is explicitly scoped by `bookmakerId`
+- if the sync request includes `bookmakerId`, the backend stores that bookmaker's real id/name even when the provider response is still direct `odds[]`
+- if the sync request does not include `bookmakerId`, the fallback remains a synthetic bookmaker:
   - `ApiBookmakerId = 0`
   - `Bookmaker = API-Football Live Feed`
 - snapshots are stored only when the latest local value has changed
@@ -2052,6 +2054,7 @@ Important note:
 - `Bookmaker` can be the synthetic source `API-Football Live Feed`
 - this happens when API-Football returns live odds as direct `odds[]` without bookmaker-level data
 - in that case `ApiBookmakerId` is `0`
+- when real bookmaker rows exist for the same fixture, the read path prefers them and suppresses the synthetic fallback rows
 
 `LiveOddsValueDto`:
 - `OutcomeLabel`
@@ -2134,175 +2137,20 @@ Generated EF script:
 Safe manual SQL fallback:
 - `sql/stage7_live_odds_and_fixture_batch_sync_manual.sql`
 
-## 27. Stage 8: Internal Live Automation Worker
+## 27. Stage 8: Removed Live Automation Worker
 
-Stage 8 adds an internal `BackgroundService` so the application can keep live data fresh without an external cron job.
+The old Stage 8 `LiveAutomation` worker has been removed from the current runtime.
+
+Current behavior:
+- there is no `LiveAutomation` config section anymore
+- `LiveAutomationBackgroundService` and `LiveAutomationOrchestrator` are no longer part of the running app
+- automatic refresh orchestration now runs through:
+  - `CoreDataAutomationBackgroundService`
+  - `CoreDataAutomationOrchestrator`
 
 Important:
-- this worker uses the existing sync services directly
 - read endpoints still stay database-only
-- there is no new database migration for Stage 8
-
-### 27.1 Goal
-
-The goal is to automate live refreshes in a quota-aware way:
-- cheap live status heartbeat first
-- heavier match-center refresh second
-- player stats less often
-- live odds only when explicitly enabled
-
-This keeps the app usable for live pages while respecting the 5000 requests/day limit much better than naive polling.
-
-### 27.2 Configuration
-
-Configuration section:
-
-`LiveAutomation`
-
-Current sample config in `appsettings.json`:
-
-```json
-"LiveAutomation": {
-  "Enabled": true,
-  "ActiveSupportedLeaguesOnly": true,
-  "ActiveIntervalSeconds": 30,
-  "IdleIntervalSeconds": 300,
-  "ErrorRetrySeconds": 120,
-  "LiveStatusIntervalSeconds": 30,
-  "MatchCenterIntervalSeconds": 60,
-  "IncludePlayersAutomation": true,
-  "PlayersIntervalSeconds": 180,
-  "MaxFixturesForPlayers": 2,
-  "UpcomingLookaheadMinutes": 75,
-  "KickoffGraceMinutes": 20,
-  "PostFinishLookbackHours": 3,
-  "MaxPostFinishRefreshes": 2,
-  "MaxMatchCenterFixtures": 6,
-  "EnableTeamStatisticsAutoSync": true,
-  "TeamStatisticsIntervalHours": 24,
-  "MaxTeamStatisticsLeaguesPerCycle": 6,
-  "TeamStatisticsMaxTeamsPerLeague": 25,
-  "EnableLiveOddsAutoSync": false,
-  "AllowAllLiveOddsMarkets": false,
-  "LiveOddsIntervalSeconds": 120,
-  "MaxLiveOddsLeaguesPerCycle": 2,
-  "LiveBetTypesRefreshHours": 24,
-  "LiveOddsBetIds": []
-}
-```
-
-Meaning of the important keys:
-- `Enabled` toggles the worker on/off
-- `ActiveSupportedLeaguesOnly` limits automation to active rows from `supported_leagues`
-- `ActiveIntervalSeconds` is the loop delay while there are live or near-kickoff fixtures
-- `IdleIntervalSeconds` is the loop delay when nothing urgent is happening
-- `LiveStatusIntervalSeconds` controls the cheap live heartbeat
-- `MatchCenterIntervalSeconds` controls the heavier batch `fixtures?ids=...` refresh
-- `PlayersIntervalSeconds` slows down player stats refreshes
-- `EnableTeamStatisticsAutoSync` enables daily background refresh for stored team statistics
-- `TeamStatisticsIntervalHours` controls how often supported leagues are revisited for `team_statistics`
-- `MaxTeamStatisticsLeaguesPerCycle` caps how many supported leagues are refreshed in one daily sweep
-- `EnableLiveOddsAutoSync` enables automatic `/odds/live` imports
-- `LiveOddsBetIds` should contain only the live bet ids you actually need
-
-### 27.3 Worker Behavior
-
-The worker is registered through:
-- `LiveAutomationBackgroundService`
-- `LiveAutomationOrchestrator`
-
-It runs in two modes:
-
-1. Active mode
-- triggered when the database contains:
-  - live fixtures
-  - upcoming fixtures close to kickoff
-  - recently finished fixtures still eligible for the final post-finish refreshes
-- loop delay uses `ActiveIntervalSeconds`
-
-2. Idle mode
-- used when there is nothing urgent to refresh
-- loop delay uses `IdleIntervalSeconds`
-
-There is also a short grace window after kickoff:
-- a fixture that still looks `NS` locally but kicked off recently is still considered worth checking
-- this helps the worker catch the transition into live mode even if the local status is stale
-
-### 27.4 What The Worker Calls
-
-The worker can call these sync services:
-
-1. Lightweight live heartbeat
-- `FixtureLiveStatusSyncService.SyncLiveFixturesAsync(...)`
-- updates score, short/long status, elapsed, venue, referee and round
-- this is the cheapest live call and runs first
-
-2. Match-center refresh
-- `FixtureMatchCenterSyncService.SyncLiveFixturesAsync(...)`
-- uses batched `fixtures?ids=...`
-- refreshes events, statistics, lineups and optionally players
-
-3. Team statistics refresh
-- `TeamAnalyticsService.SyncStatisticsAsync(...)`
-- runs on a much longer interval than live refreshes
-- targets active `supported_leagues`
-- keeps `team_statistics` warm for frontend team pages without needing a manual admin call
-
-4. Live bet types
-- `LiveOddsService.SyncLiveBetTypesAsync(...)`
-- runs on a long interval, mainly to keep live bet ids current
-
-5. Live odds
-- `LiveOddsService.SyncLiveOddsAsync(...)`
-- only runs when `EnableLiveOddsAutoSync=true`
-- only runs for live leagues
-- by default does not run automatically until you explicitly configure desired live bet ids
-
-### 27.5 Quota Strategy
-
-The default behavior is intentionally conservative:
-- live status every 30 seconds
-- match-center every 60 seconds
-- player statistics every 180 seconds
-- team statistics every 24 hours for active supported leagues
-- players only when live fixture count is small
-- live odds auto-sync off by default
-
-This means:
-- the worker keeps the essential live scoreboard fresh
-- the expensive parts do not fire every loop
-- live odds are protected behind explicit config because they can become very expensive fast
-
-Recommended approach:
-- keep `EnableLiveOddsAutoSync=false` until you know which live markets the frontend really needs
-- then set only a small `LiveOddsBetIds` list
-- keep `MaxLiveOddsLeaguesPerCycle` low
-
-### 27.6 Error Handling
-
-If a background cycle fails:
-- the app logs the exception
-- the worker stores an entry in `sync_errors` with:
-  - `entity_type = live_automation`
-  - `operation = cycle`
-  - `source = background`
-- then it waits `ErrorRetrySeconds` before trying again
-
-### 27.7 Operational Notes
-
-Stage 8 removes the need for an external cron only for live orchestration.
-
-It does not replace your broader manual/admin sync flows such as:
-- countries
-- leagues
-- teams
-- season fixtures
-- standings
-- pre-match odds
-- previews
-- league analytics
-
-Those remain separate by design.
+- there is no database migration associated with removing the legacy worker
 
 ## 28. Stage 9: Production Hardening
 
@@ -2349,14 +2197,14 @@ Fields:
 - `LowQuotaDelayMs`
 - `CriticalQuotaDelayMs`
 
-### 28.3 Live Automation Quota Guards
+### 28.3 Core Automation Quota Guards
 
-The internal live worker now uses quota mode as an extra guard:
-- player automation is allowed only in `Normal`
-- live odds auto-sync is allowed only in `Normal`
-- match-center scope is reduced when quota becomes `Low` or `Critical`
+The primary automation worker now uses quota mode and daily budgets as extra guards:
+- live odds auto-sync is skipped in `Critical`
+- pre-match odds and repair work are also skipped in `Critical`
+- team, standings, fixture and live-odds batch sizes are reduced when quota becomes `Low` or `Critical`
 
-This keeps the cheap live heartbeat as the last feature to sacrifice.
+This keeps the cheapest core refreshes available the longest.
 
 ### 28.4 Data Retention Worker
 
@@ -2423,15 +2271,13 @@ These remain available as legacy/manual flows.
 
 ### 29.1 Primary Automation Model
 
-The old live-only worker is no longer the main operational model.
+The old live-only worker has been removed from the runtime.
 
 The new primary worker is:
 - `CoreDataAutomationBackgroundService`
 - `CoreDataAutomationOrchestrator`
 
 It runs as an internal `BackgroundService` and does not need an external cron job.
-
-The old `LiveAutomation` config section is kept only for backward compatibility and is disabled by default.
 
 The new primary config section is:
 
@@ -2516,6 +2362,8 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `OddsNearIntervalMinutes = 30`
 - `OddsFinalIntervalMinutes = 15`
 - `LiveOddsIntervalSeconds = 60`
+- `TrackLiveOddsPerBookmaker = true`
+- `MaxLiveOddsBookmakersPerLeaguePerCycle = 4`
 - `RepairIntervalHours = 4`
 
 ### 29.5 Budget Strategy For 70 000 Requests/Day

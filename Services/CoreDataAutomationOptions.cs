@@ -43,8 +43,11 @@ public class CoreDataAutomationOptions
     public int MaxOddsFixturesPerCycle { get; set; } = 12;
     public bool EnableLiveOddsAutoSync { get; set; } = true;
     public bool AllowAllLiveOddsMarkets { get; set; } = true;
+    public bool TrackLiveOddsPerBookmaker { get; set; } = true;
     public int LiveOddsIntervalSeconds { get; set; } = 60;
     public int MaxLiveOddsLeaguesPerCycle { get; set; } = 6;
+    public int MaxLiveOddsBookmakersPerLeaguePerCycle { get; set; } = 4;
+    public List<long> LiveOddsBookmakerApiIds { get; set; } = new();
     public int LiveBetTypesRefreshHours { get; set; } = 24;
     public int RepairIntervalHours { get; set; } = 4;
     public int MaxRepairLeagueSeasonsPerCycle { get; set; } = 4;
@@ -76,6 +79,7 @@ public class CoreDataAutomationOptions
     public int GetMaxHotFixtureLeagueSeasonsPerCycle() => Math.Clamp(MaxHotFixtureLeagueSeasonsPerCycle, 1, 50);
     public int GetMaxOddsFixturesPerCycle() => Math.Clamp(MaxOddsFixturesPerCycle, 1, 100);
     public int GetMaxLiveOddsLeaguesPerCycle() => Math.Clamp(MaxLiveOddsLeaguesPerCycle, 1, 20);
+    public int GetMaxLiveOddsBookmakersPerLeaguePerCycle() => Math.Clamp(MaxLiveOddsBookmakersPerLeaguePerCycle, 1, 50);
     public int GetMaxRepairLeagueSeasonsPerCycle() => Math.Clamp(MaxRepairLeagueSeasonsPerCycle, 1, 20);
     public int GetFixtureHotLookbackHours() => Math.Clamp(FixtureHotLookbackHours, 1, 48);
     public int GetFixtureHotLookaheadHours() => Math.Clamp(FixtureHotLookaheadHours, 1, 72);
@@ -92,4 +96,9 @@ public class CoreDataAutomationOptions
     public int GetOddsPreMatchDailyBudget() => Math.Clamp(OddsPreMatchDailyBudget, 100, 50000);
     public int GetOddsLiveDailyBudget() => Math.Clamp(OddsLiveDailyBudget, 100, 50000);
     public int GetRepairDailyBudget() => Math.Clamp(RepairDailyBudget, 10, 10000);
+    public IReadOnlyList<long> GetNormalizedLiveOddsBookmakerApiIds() => LiveOddsBookmakerApiIds
+        .Where(x => x > 0)
+        .Distinct()
+        .Take(200)
+        .ToList();
 }
