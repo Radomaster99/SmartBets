@@ -383,26 +383,43 @@ public class LiveOddsService
             .ThenBy(x => x.Bookmaker.Name)
             .ThenBy(x => x.BetName)
             .ThenBy(x => x.OutcomeLabel)
+            .Select(x => new LiveOddsReadRow
+            {
+                FixtureId = x.FixtureId,
+                BookmakerId = x.BookmakerId,
+                ApiBookmakerId = x.Bookmaker.ApiBookmakerId,
+                Bookmaker = x.Bookmaker.Name,
+                ApiBetId = x.ApiBetId,
+                BetName = x.BetName,
+                OutcomeLabel = x.OutcomeLabel,
+                Line = x.Line,
+                Odd = x.Odd,
+                IsMain = x.IsMain,
+                Stopped = x.Stopped,
+                Blocked = x.Blocked,
+                Finished = x.Finished,
+                CollectedAtUtc = x.CollectedAtUtc
+            })
             .ToListAsync(cancellationToken);
 
         if (rows.Count == 0)
             return Array.Empty<LiveOddsMarketDto>();
 
         var grouped = rows
-            .GroupBy(x => new { x.BookmakerId, x.Bookmaker.ApiBookmakerId, x.Bookmaker.Name, x.ApiBetId, x.BetName });
+            .GroupBy(x => new { x.BookmakerId, x.ApiBookmakerId, x.Bookmaker, x.ApiBetId, x.BetName });
 
         var result = new List<LiveOddsMarketDto>();
 
         foreach (var group in grouped)
         {
+            var lastSnapshotCollectedAtUtc = group.Max(x => x.CollectedAtUtc);
             var selectedRows = latestOnly
-                ? group.Where(x => x.CollectedAtUtc == group.Max(y => y.CollectedAtUtc)).ToList()
+                ? group.Where(x => x.CollectedAtUtc == lastSnapshotCollectedAtUtc).ToList()
                 : group.OrderByDescending(x => x.CollectedAtUtc).ToList();
 
             if (selectedRows.Count == 0)
                 continue;
 
-            var lastSnapshotCollectedAtUtc = selectedRows.Max(x => x.CollectedAtUtc);
             var effectiveCollectedAtUtc = latestOnly && lastSyncedAtUtc.HasValue && lastSyncedAtUtc.Value > lastSnapshotCollectedAtUtc
                 ? lastSyncedAtUtc.Value
                 : lastSnapshotCollectedAtUtc;
@@ -413,7 +430,7 @@ public class LiveOddsService
                 ApiFixtureId = fixture.ApiFixtureId,
                 BookmakerId = group.Key.BookmakerId,
                 ApiBookmakerId = group.Key.ApiBookmakerId,
-                Bookmaker = group.Key.Name,
+                Bookmaker = group.Key.Bookmaker,
                 ApiBetId = group.Key.ApiBetId,
                 BetName = group.Key.BetName,
                 CollectedAtUtc = effectiveCollectedAtUtc,
@@ -1312,6 +1329,24 @@ public class LiveOddsService
         public string Bookmaker { get; set; } = string.Empty;
         public string OutcomeLabel { get; set; } = string.Empty;
         public decimal? Odd { get; set; }
+        public DateTime CollectedAtUtc { get; set; }
+    }
+
+    private sealed class LiveOddsReadRow
+    {
+        public long FixtureId { get; set; }
+        public long BookmakerId { get; set; }
+        public long ApiBookmakerId { get; set; }
+        public string Bookmaker { get; set; } = string.Empty;
+        public long ApiBetId { get; set; }
+        public string BetName { get; set; } = string.Empty;
+        public string OutcomeLabel { get; set; } = string.Empty;
+        public string? Line { get; set; }
+        public decimal? Odd { get; set; }
+        public bool? IsMain { get; set; }
+        public bool? Stopped { get; set; }
+        public bool? Blocked { get; set; }
+        public bool? Finished { get; set; }
         public DateTime CollectedAtUtc { get; set; }
     }
 
