@@ -158,6 +158,8 @@ public class LiveOddsService
         if (remoteRows.Count == 0)
             return result;
 
+        await EnsureLiveBetTypesForRemoteRowsAsync(remoteRows, result.ExecutedAtUtc, cancellationToken);
+
         var apiFixtureIds = remoteRows.Select(x => x.Fixture.Id).Distinct().ToList();
         var summaryBeforeByApiFixtureId = (await GetFixtureOddsSummariesAsync(apiFixtureIds, cancellationToken))
             .ToDictionary(x => x.ApiFixtureId);
@@ -464,12 +466,24 @@ public class LiveOddsService
         if (fixture is null || !ShouldAttemptLiveOddsCatchUp(fixture))
             return result;
 
-        await SyncLiveOddsAsync(
-            fixtureId: fixture.ApiFixtureId,
-            leagueId: null,
-            betId,
-            bookmakerId,
-            cancellationToken);
+        try
+        {
+            await SyncLiveOddsAsync(
+                fixtureId: fixture.ApiFixtureId,
+                leagueId: null,
+                betId,
+                bookmakerId,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Live odds catch-up failed for fixture {ApiFixtureId}. Returning cached data only.",
+                fixture.ApiFixtureId);
+
+            return result;
+        }
 
         return await GetLiveOddsAsync(
             fixtureId,
@@ -1088,6 +1102,53 @@ public class LiveOddsService
         return new LeagueSeasonScope(leagueApiId, season);
     }
 
+    private async Task EnsureLiveBetTypesForRemoteRowsAsync(
+        IReadOnlyCollection<ApiFootballLiveOddsFixtureItem> remoteRows,
+        DateTime syncedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var providerBets = remoteRows
+            .SelectMany(GetProviderBets)
+            .Where(x => x.Id > 0)
+            .GroupBy(x => x.Id)
+            .Select(x => x.First())
+            .ToList();
+
+        if (providerBets.Count == 0)
+            return;
+
+        var existing = await _dbContext.LiveBetTypes.ToListAsync(cancellationToken);
+        var existingByApiId = existing.ToDictionary(x => x.ApiBetId);
+
+        foreach (var providerBet in providerBets)
+        {
+            var normalizedName = string.IsNullOrWhiteSpace(providerBet.Name)
+                ? $"Bet {providerBet.Id}"
+                : providerBet.Name.Trim();
+
+            if (!existingByApiId.TryGetValue(providerBet.Id, out var liveBetType))
+            {
+                liveBetType = new LiveBetType
+                {
+                    ApiBetId = providerBet.Id,
+                    Name = normalizedName,
+                    SyncedAtUtc = syncedAtUtc
+                };
+
+                _dbContext.LiveBetTypes.Add(liveBetType);
+                existingByApiId[providerBet.Id] = liveBetType;
+                continue;
+            }
+
+            if (!string.Equals(liveBetType.Name, normalizedName, StringComparison.Ordinal))
+            {
+                liveBetType.Name = normalizedName;
+            }
+
+            liveBetType.SyncedAtUtc = syncedAtUtc;
+        }
+    }
+
     private static IReadOnlyList<ProviderBookmakerScope> GetProviderBookmakers(ApiFootballLiveOddsFixtureItem fixture)
     {
         if (fixture.Bookmakers.Count > 0)
@@ -1118,6 +1179,14 @@ public class LiveOddsService
         }
 
         return Array.Empty<ProviderBookmakerScope>();
+    }
+
+    private static IReadOnlyList<ApiFootballLiveOddsBet> GetProviderBets(ApiFootballLiveOddsFixtureItem fixture)
+    {
+        if (fixture.Bookmakers.Count > 0)
+            return fixture.Bookmakers.SelectMany(x => x.Bets).ToList();
+
+        return fixture.Odds;
     }
 
     private static int GetProviderBookmakerCount(ApiFootballLiveOddsFixtureItem fixture)

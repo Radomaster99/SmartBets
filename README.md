@@ -93,6 +93,12 @@ Stage 7 live odds + fixture batch sync:
 - `POST /api/odds/live/sync`
 - `GET /api/odds/live`
 - `GET /api/fixtures/{apiFixtureId}/odds/live`
+- live odds ingestion now accepts both provider response shapes seen in production:
+  - legacy `bookmakers[].bets[].values`
+  - direct `odds[].values`
+- when the provider omits bookmaker information, live odds are stored under the synthetic source bookmaker:
+  - `ApiBookmakerId = 0`
+  - `Bookmaker = API-Football Live Feed`
 - migration: `Migrations/20260331190852_Stage7LiveOddsAndFixtureBatchSync.cs`
 - SQL fallback: `sql/stage7_live_odds_and_fixture_batch_sync_manual.sql`
 
@@ -183,7 +189,7 @@ Stage 12 SignalR live odds push:
 - optional subscribe by league with `JoinLeague(leagueId)`
 - event name: `LiveOddsUpdated`
 - live odds sync now broadcasts only after changed snapshots are persisted
-- browser clients can authenticate with the existing API token through `?access_token=...`
+- browser clients now connect with JWT through `?access_token=...`
 
 Stage 13 JWT auth for REST and SignalR:
 - REST endpoints now accept `Authorization: Bearer {jwt}`
@@ -210,3 +216,9 @@ Stage 14 live odds list-view optimization:
   - `LeaveFixtures(apiFixtureIds[])`
   - `JoinLiveFeed()`
   - `LeaveLiveFeed()`
+- if a live fixture returns `source = prematch` or `source = none`, that can mean the provider currently has no usable live odds for that fixture, not necessarily a frontend integration issue
+
+Live odds diagnostics:
+- `GET /api/debug/provider/live-odds?fixtureId=...`
+- `GET /api/debug/provider/live-odds?leagueId=...`
+- these endpoints show whether the provider returned fixtures/values at all before the backend tries to save anything locally

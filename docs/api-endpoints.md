@@ -893,6 +893,42 @@ Base route:
 - `Teams`
 - `Fixtures`
 - `SupportedLeagues`
+- `LiveOdds`
+
+### 14.3 `GET /api/debug/provider/live-odds`
+
+Purpose:
+- diagnostics endpoint for the raw live odds provider response
+- helps separate provider-availability issues from local matching or save-path bugs
+
+Query parameters:
+- `fixtureId` - optional API fixture id
+- `leagueId` - optional API league id
+- `betId` - optional live bet id
+- `bookmakerId` - optional API bookmaker id
+
+Validation:
+- requires either `fixtureId` or `leagueId`
+
+Response:
+- `FixtureId`
+- `LeagueId`
+- `BetId`
+- `BookmakerId`
+- `ProviderFixturesReceived`
+- `ProviderFixtureApiIds`
+- `ProviderBookmakersReceived`
+- `ProviderBetsReceived`
+- `ProviderValuesReceived`
+- `Sample`
+- `LocalMatchingFixtures`
+
+Notes:
+- the endpoint understands both live odds provider response shapes currently seen in production:
+  - legacy `bookmakers[].bets[].values`
+  - direct `odds[].values`
+- if `ProviderFixturesReceived = 0` and `ProviderValuesReceived = 0`, the issue is upstream provider availability
+- if provider fixtures are returned but `LocalMatchingFixtures` is empty, the issue is local fixture matching
 
 ## 15. Практически бележки за frontend
 
@@ -1959,6 +1995,12 @@ Validation:
 Behavior:
 - `fixtureId` and `leagueId` use API ids
 - `betId` must come from `GET /api/odds/live-bets`
+- the live odds provider currently appears in two shapes and the backend accepts both:
+  - legacy `bookmakers[].bets[].values`
+  - direct `odds[].values`
+- when the provider omits bookmaker information and returns direct `odds[]`, the backend stores the rows under a synthetic bookmaker:
+  - `ApiBookmakerId = 0`
+  - `Bookmaker = API-Football Live Feed`
 - snapshots are stored only when the latest local value has changed
 - sync state `live_odds` is updated per touched league/season
 
@@ -2005,6 +2047,11 @@ Response:
 - `LastSnapshotCollectedAtUtc`
 - `LastSyncedAtUtc`
 - `Values`
+
+Important note:
+- `Bookmaker` can be the synthetic source `API-Football Live Feed`
+- this happens when API-Football returns live odds as direct `odds[]` without bookmaker-level data
+- in that case `ApiBookmakerId` is `0`
 
 `LiveOddsValueDto`:
 - `OutcomeLabel`
@@ -2067,7 +2114,8 @@ Payload:
 Notes:
 - `Markets` uses the same `LiveOddsMarketDto` shape returned by the REST endpoint
 - broadcasts happen only when the live odds sync writes changed snapshots
-- browser clients can pass the existing API token through `access_token` on the hub connection
+- browser clients should pass a JWT through `access_token` on the hub connection
+- `X-API-KEY` remains only as a transitional bridge for authenticated token minting through `POST /api/auth/token`
 
 ### 26.7 Sync Status Additions
 
@@ -2631,6 +2679,8 @@ Important behavior:
 - this is a cache-only read path intended for list views
 - it does not trigger per-row on-demand live odds sync
 - if live odds are missing, the backend falls back to stored pre-match best odds
+- for live fixtures this means `source = prematch` or `source = none` does not automatically mean a frontend bug
+- it can also mean API-Football is not returning usable live odds for that fixture in the current live window
 
 Additional batch endpoint:
 - `POST /api/odds/live/summary`
