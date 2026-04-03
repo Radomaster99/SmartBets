@@ -537,11 +537,20 @@ public class FixturesController : ControllerBase
         [FromQuery] bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
-        var odds = await _preMatchOddsService.GetFixtureOddsAsync(
-            apiFixtureId: apiFixtureId,
-            marketName: marketName,
-            latestOnly: latestOnly,
-            cancellationToken: cancellationToken);
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+        {
+            return NotFound(new
+            {
+                Message = "Fixture not found."
+            });
+        }
+
+        var odds = await GetCurrentOddsAsync(
+            fixture,
+            marketName,
+            latestOnly,
+            cancellationToken);
 
         if (odds.Count == 0)
         {
@@ -560,10 +569,19 @@ public class FixturesController : ControllerBase
         [FromQuery] string? marketName,
         CancellationToken cancellationToken = default)
     {
-        var bestOdds = await _preMatchOddsService.GetBestOddsAsync(
-            apiFixtureId: apiFixtureId,
-            marketName: marketName,
-            cancellationToken: cancellationToken);
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+        {
+            return NotFound(new
+            {
+                Message = "Fixture not found."
+            });
+        }
+
+        var bestOdds = await GetCurrentBestOddsAsync(
+            fixture,
+            marketName,
+            cancellationToken);
 
         if (bestOdds is null)
         {
@@ -871,17 +889,14 @@ public class FixturesController : ControllerBase
                 .FirstOrDefault();
         }
 
+        var bestOdds = await GetCurrentBestOddsAsync(fixture, marketName, cancellationToken);
+        var latestOddsCollectedAtUtc = await GetCurrentOddsCollectedAtUtcAsync(fixture, marketName, cancellationToken);
+
         return new FixtureDetailDto
         {
             Fixture = MapFixture(fixture),
-            BestOdds = await _preMatchOddsService.GetBestOddsAsync(
-                apiFixtureId: fixture.ApiFixtureId,
-                marketName: marketName,
-                cancellationToken: cancellationToken),
-            LatestOddsCollectedAtUtc = await _preMatchOddsService.GetLatestCollectedAtUtcAsync(
-                apiFixtureId: fixture.ApiFixtureId,
-                marketName: marketName,
-                cancellationToken: cancellationToken),
+            BestOdds = bestOdds,
+            LatestOddsCollectedAtUtc = latestOddsCollectedAtUtc,
             Freshness = new FixtureFreshnessDto
             {
                 LastLiveStatusSyncedAtUtc = fixture.LastLiveStatusSyncedAtUtc,
@@ -897,5 +912,83 @@ public class FixturesController : ControllerBase
             FixturesFullLastSyncedAtUtc = FindSyncValue("fixtures_full"),
             OddsLastSyncedAtUtc = FindSyncValue("odds")
         };
+    }
+
+    private async Task<IReadOnlyList<OddDto>> GetCurrentOddsAsync(
+        Fixture fixture,
+        string? marketName,
+        bool latestOnly,
+        CancellationToken cancellationToken)
+    {
+        if (ShouldPreferLiveOdds(fixture, marketName, latestOnly))
+        {
+            var liveOdds = await _liveOddsService.GetMatchWinnerOddsAsync(
+                apiFixtureId: fixture.ApiFixtureId,
+                latestOnly: true,
+                cancellationToken: cancellationToken);
+
+            if (liveOdds.Count > 0)
+                return liveOdds;
+        }
+
+        return await _preMatchOddsService.GetFixtureOddsAsync(
+            apiFixtureId: fixture.ApiFixtureId,
+            marketName: marketName,
+            latestOnly: latestOnly,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<BestOddsDto?> GetCurrentBestOddsAsync(
+        Fixture fixture,
+        string? marketName,
+        CancellationToken cancellationToken)
+    {
+        if (ShouldPreferLiveOdds(fixture, marketName, latestOnly: true))
+        {
+            var liveBestOdds = await _liveOddsService.GetBestMatchWinnerOddsAsync(
+                apiFixtureId: fixture.ApiFixtureId,
+                cancellationToken: cancellationToken);
+
+            if (liveBestOdds is not null)
+                return liveBestOdds;
+        }
+
+        return await _preMatchOddsService.GetBestOddsAsync(
+            apiFixtureId: fixture.ApiFixtureId,
+            marketName: marketName,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<DateTime?> GetCurrentOddsCollectedAtUtcAsync(
+        Fixture fixture,
+        string? marketName,
+        CancellationToken cancellationToken)
+    {
+        if (ShouldPreferLiveOdds(fixture, marketName, latestOnly: true))
+        {
+            var liveCollectedAtUtc = await _liveOddsService.GetLatestMatchWinnerCollectedAtUtcAsync(
+                apiFixtureId: fixture.ApiFixtureId,
+                cancellationToken: cancellationToken);
+
+            if (liveCollectedAtUtc.HasValue)
+                return liveCollectedAtUtc;
+        }
+
+        return await _preMatchOddsService.GetLatestCollectedAtUtcAsync(
+            apiFixtureId: fixture.ApiFixtureId,
+            marketName: marketName,
+            cancellationToken: cancellationToken);
+    }
+
+    private static bool ShouldPreferLiveOdds(Fixture fixture, string? marketName, bool latestOnly)
+    {
+        if (!latestOnly)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(marketName) &&
+            !string.Equals(marketName.Trim(), PreMatchOddsService.DefaultMarketName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return FixtureStatusMapper.GetStateBucket(fixture.Status) == FixtureStateBucket.Live;
     }
 }

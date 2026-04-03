@@ -1,4 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SmartBets.Data;
+using SmartBets.Entities;
+using SmartBets.Enums;
 using SmartBets.Services;
 
 namespace SmartBets.Controllers;
@@ -11,13 +15,16 @@ public class OddsController : ControllerBase
     private readonly LiveOddsService _liveOddsService;
     private readonly OddsAnalyticsService _oddsAnalyticsService;
     private readonly SyncStateService _syncStateService;
+    private readonly AppDbContext _dbContext;
 
     public OddsController(
+        AppDbContext dbContext,
         PreMatchOddsService preMatchOddsService,
         LiveOddsService liveOddsService,
         OddsAnalyticsService oddsAnalyticsService,
         SyncStateService syncStateService)
     {
+        _dbContext = dbContext;
         _preMatchOddsService = preMatchOddsService;
         _liveOddsService = liveOddsService;
         _oddsAnalyticsService = oddsAnalyticsService;
@@ -209,9 +216,17 @@ public class OddsController : ControllerBase
         if (!fixtureId.HasValue && !apiFixtureId.HasValue)
             return BadRequest("Either fixtureId or apiFixtureId is required.");
 
-        var odds = await _preMatchOddsService.GetFixtureOddsAsync(
-            fixtureId,
-            apiFixtureId,
+        var fixture = await ResolveFixtureAsync(fixtureId, apiFixtureId, cancellationToken);
+        if (fixture is null)
+        {
+            return NotFound(new
+            {
+                Message = "Fixture not found."
+            });
+        }
+
+        var odds = await GetCurrentOddsAsync(
+            fixture,
             marketName,
             latestOnly,
             cancellationToken);
@@ -237,9 +252,17 @@ public class OddsController : ControllerBase
         if (!fixtureId.HasValue && !apiFixtureId.HasValue)
             return BadRequest("Either fixtureId or apiFixtureId is required.");
 
-        var bestOdds = await _preMatchOddsService.GetBestOddsAsync(
-            fixtureId,
-            apiFixtureId,
+        var fixture = await ResolveFixtureAsync(fixtureId, apiFixtureId, cancellationToken);
+        if (fixture is null)
+        {
+            return NotFound(new
+            {
+                Message = "Fixture not found."
+            });
+        }
+
+        var bestOdds = await GetCurrentBestOddsAsync(
+            fixture,
             marketName,
             cancellationToken);
 
@@ -252,5 +275,83 @@ public class OddsController : ControllerBase
         }
 
         return Ok(bestOdds);
+    }
+
+    private async Task<Fixture?> ResolveFixtureAsync(
+        long? fixtureId,
+        long? apiFixtureId,
+        CancellationToken cancellationToken)
+    {
+        if (!fixtureId.HasValue && !apiFixtureId.HasValue)
+            return null;
+
+        var query = _dbContext.Fixtures
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (fixtureId.HasValue)
+            query = query.Where(x => x.Id == fixtureId.Value);
+
+        if (apiFixtureId.HasValue)
+            query = query.Where(x => x.ApiFixtureId == apiFixtureId.Value);
+
+        return await query.FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<Dtos.OddDto>> GetCurrentOddsAsync(
+        Fixture fixture,
+        string? marketName,
+        bool latestOnly,
+        CancellationToken cancellationToken)
+    {
+        if (ShouldPreferLiveOdds(fixture, marketName, latestOnly))
+        {
+            var liveOdds = await _liveOddsService.GetMatchWinnerOddsAsync(
+                fixtureId: fixture.Id,
+                latestOnly: true,
+                cancellationToken: cancellationToken);
+
+            if (liveOdds.Count > 0)
+                return liveOdds;
+        }
+
+        return await _preMatchOddsService.GetFixtureOddsAsync(
+            fixtureId: fixture.Id,
+            marketName: marketName,
+            latestOnly: latestOnly,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<Dtos.BestOddsDto?> GetCurrentBestOddsAsync(
+        Fixture fixture,
+        string? marketName,
+        CancellationToken cancellationToken)
+    {
+        if (ShouldPreferLiveOdds(fixture, marketName, latestOnly: true))
+        {
+            var liveBestOdds = await _liveOddsService.GetBestMatchWinnerOddsAsync(
+                fixtureId: fixture.Id,
+                cancellationToken: cancellationToken);
+
+            if (liveBestOdds is not null)
+                return liveBestOdds;
+        }
+
+        return await _preMatchOddsService.GetBestOddsAsync(
+            fixtureId: fixture.Id,
+            marketName: marketName,
+            cancellationToken: cancellationToken);
+    }
+
+    private static bool ShouldPreferLiveOdds(Fixture fixture, string? marketName, bool latestOnly)
+    {
+        if (!latestOnly)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(marketName) &&
+            !string.Equals(marketName.Trim(), PreMatchOddsService.DefaultMarketName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return FixtureStatusMapper.GetStateBucket(fixture.Status) == FixtureStateBucket.Live;
     }
 }

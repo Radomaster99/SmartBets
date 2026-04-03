@@ -380,6 +380,92 @@ public class LiveOddsService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<OddDto>> GetMatchWinnerOddsAsync(
+        long? fixtureId = null,
+        long? apiFixtureId = null,
+        bool latestOnly = true,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await ResolveFixtureAsync(fixtureId, apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return Array.Empty<OddDto>();
+
+        var markets = await GetLiveOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            latestOnly: latestOnly,
+            cancellationToken: cancellationToken);
+
+        return markets
+            .Where(x => string.Equals(x.BetName, PreMatchOddsService.DefaultMarketName, StringComparison.OrdinalIgnoreCase))
+            .Select(x => TryMapMatchWinnerOdds(x, fixture, out var dto) ? dto : null)
+            .Where(x => x is not null)
+            .Cast<OddDto>()
+            .OrderBy(x => x.Bookmaker)
+            .ThenBy(x => x.MarketName)
+            .ToList();
+    }
+
+    public async Task<BestOddsDto?> GetBestMatchWinnerOddsAsync(
+        long? fixtureId = null,
+        long? apiFixtureId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var odds = await GetMatchWinnerOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            latestOnly: true,
+            cancellationToken: cancellationToken);
+
+        if (odds.Count == 0)
+            return null;
+
+        var bestHome = odds
+            .Where(x => x.HomeOdd.HasValue)
+            .OrderByDescending(x => x.HomeOdd)
+            .FirstOrDefault();
+
+        var bestDraw = odds
+            .Where(x => x.DrawOdd.HasValue)
+            .OrderByDescending(x => x.DrawOdd)
+            .FirstOrDefault();
+
+        var bestAway = odds
+            .Where(x => x.AwayOdd.HasValue)
+            .OrderByDescending(x => x.AwayOdd)
+            .FirstOrDefault();
+
+        return new BestOddsDto
+        {
+            FixtureId = odds[0].FixtureId,
+            ApiFixtureId = odds[0].ApiFixtureId,
+            MarketName = PreMatchOddsService.DefaultMarketName,
+            CollectedAtUtc = odds.Max(x => x.CollectedAtUtc),
+            BestHomeOdd = bestHome?.HomeOdd,
+            BestHomeBookmaker = bestHome?.Bookmaker,
+            BestDrawOdd = bestDraw?.DrawOdd,
+            BestDrawBookmaker = bestDraw?.Bookmaker,
+            BestAwayOdd = bestAway?.AwayOdd,
+            BestAwayBookmaker = bestAway?.Bookmaker
+        };
+    }
+
+    public async Task<DateTime?> GetLatestMatchWinnerCollectedAtUtcAsync(
+        long? fixtureId = null,
+        long? apiFixtureId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var odds = await GetMatchWinnerOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            latestOnly: true,
+            cancellationToken: cancellationToken);
+
+        return odds.Count == 0
+            ? null
+            : odds.Max(x => x.CollectedAtUtc);
+    }
+
     private async Task<FixtureScope?> ResolveFixtureAsync(
         long? fixtureId,
         long? apiFixtureId,
@@ -396,7 +482,9 @@ public class LiveOddsService
                 FixtureId = x.Id,
                 ApiFixtureId = x.ApiFixtureId,
                 LeagueApiId = x.League.ApiLeagueId,
-                Season = x.Season
+                Season = x.Season,
+                HomeTeamName = x.HomeTeam.Name,
+                AwayTeamName = x.AwayTeam.Name
             })
             .AsQueryable();
 
@@ -407,6 +495,79 @@ public class LiveOddsService
             query = query.Where(x => x.ApiFixtureId == apiFixtureId.Value);
 
         return await query.FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static bool TryMapMatchWinnerOdds(
+        LiveOddsMarketDto market,
+        FixtureScope fixture,
+        out OddDto dto)
+    {
+        dto = new OddDto
+        {
+            FixtureId = market.FixtureId,
+            ApiFixtureId = market.ApiFixtureId,
+            BookmakerId = market.BookmakerId,
+            ApiBookmakerId = market.ApiBookmakerId,
+            Bookmaker = market.Bookmaker,
+            MarketName = PreMatchOddsService.DefaultMarketName,
+            CollectedAtUtc = market.CollectedAtUtc
+        };
+
+        foreach (var value in market.Values)
+        {
+            if (IsHomeOutcome(value.OutcomeLabel, fixture.HomeTeamName))
+            {
+                dto.HomeOdd = value.Odd;
+            }
+            else if (IsDrawOutcome(value.OutcomeLabel))
+            {
+                dto.DrawOdd = value.Odd;
+            }
+            else if (IsAwayOutcome(value.OutcomeLabel, fixture.AwayTeamName))
+            {
+                dto.AwayOdd = value.Odd;
+            }
+        }
+
+        return dto.HomeOdd.HasValue || dto.DrawOdd.HasValue || dto.AwayOdd.HasValue;
+    }
+
+    private static bool IsHomeOutcome(string? outcomeLabel, string homeTeamName)
+    {
+        if (string.IsNullOrWhiteSpace(outcomeLabel))
+            return false;
+
+        var normalized = NormalizeOutcome(outcomeLabel);
+        var normalizedHomeTeam = NormalizeOutcome(homeTeamName);
+
+        return normalized is "1" or "HOME" ||
+               normalized == normalizedHomeTeam;
+    }
+
+    private static bool IsDrawOutcome(string? outcomeLabel)
+    {
+        if (string.IsNullOrWhiteSpace(outcomeLabel))
+            return false;
+
+        var normalized = NormalizeOutcome(outcomeLabel);
+        return normalized is "X" or "DRAW" or "TIE";
+    }
+
+    private static bool IsAwayOutcome(string? outcomeLabel, string awayTeamName)
+    {
+        if (string.IsNullOrWhiteSpace(outcomeLabel))
+            return false;
+
+        var normalized = NormalizeOutcome(outcomeLabel);
+        var normalizedAwayTeam = NormalizeOutcome(awayTeamName);
+
+        return normalized is "2" or "AWAY" ||
+               normalized == normalizedAwayTeam;
+    }
+
+    private static string NormalizeOutcome(string value)
+    {
+        return value.Trim().ToUpperInvariant();
     }
 
     private static string BuildSnapshotKey(
@@ -459,6 +620,8 @@ public class LiveOddsService
         public long ApiFixtureId { get; set; }
         public long LeagueApiId { get; set; }
         public int Season { get; set; }
+        public string HomeTeamName { get; set; } = string.Empty;
+        public string AwayTeamName { get; set; } = string.Empty;
     }
 
     private sealed class LiveOddSnapshotKey
