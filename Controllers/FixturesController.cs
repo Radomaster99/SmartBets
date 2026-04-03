@@ -602,7 +602,7 @@ public class FixturesController : ControllerBase
         [FromQuery] bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
-        var result = await _liveOddsService.GetLiveOddsAsync(
+        var result = await _liveOddsService.GetLiveOddsWithCatchUpAsync(
             apiFixtureId: apiFixtureId,
             betId: betId,
             bookmakerId: bookmakerId,

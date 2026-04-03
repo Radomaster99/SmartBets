@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Dtos;
 using SmartBets.Entities;
+using SmartBets.Enums;
 using SmartBets.Hubs;
 
 namespace SmartBets.Services;
@@ -391,6 +392,45 @@ public class LiveOddsService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<LiveOddsMarketDto>> GetLiveOddsWithCatchUpAsync(
+        long? fixtureId = null,
+        long? apiFixtureId = null,
+        long? betId = null,
+        long? bookmakerId = null,
+        bool latestOnly = true,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await GetLiveOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            betId,
+            bookmakerId,
+            latestOnly,
+            cancellationToken);
+
+        if (result.Count > 0)
+            return result;
+
+        var fixture = await ResolveStoredFixtureAsync(fixtureId, apiFixtureId, cancellationToken);
+        if (fixture is null || !ShouldAttemptLiveOddsCatchUp(fixture))
+            return result;
+
+        await SyncLiveOddsAsync(
+            fixtureId: fixture.ApiFixtureId,
+            leagueId: null,
+            betId,
+            bookmakerId,
+            cancellationToken);
+
+        return await GetLiveOddsAsync(
+            fixtureId,
+            apiFixtureId,
+            betId,
+            bookmakerId,
+            latestOnly,
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<OddDto>> GetMatchWinnerOddsAsync(
         long? fixtureId = null,
         long? apiFixtureId = null,
@@ -401,9 +441,11 @@ public class LiveOddsService
         if (fixture is null)
             return Array.Empty<OddDto>();
 
-        var markets = await GetLiveOddsAsync(
+        var markets = await GetLiveOddsWithCatchUpAsync(
             fixtureId,
             apiFixtureId,
+            betId: null,
+            bookmakerId: null,
             latestOnly: latestOnly,
             cancellationToken: cancellationToken);
 
@@ -538,6 +580,34 @@ public class LiveOddsService
         return await query.FirstOrDefaultAsync(cancellationToken);
     }
 
+    private async Task<StoredFixtureScope?> ResolveStoredFixtureAsync(
+        long? fixtureId,
+        long? apiFixtureId,
+        CancellationToken cancellationToken)
+    {
+        if (!fixtureId.HasValue && !apiFixtureId.HasValue)
+            return null;
+
+        var query = _dbContext.Fixtures
+            .AsNoTracking()
+            .Select(x => new StoredFixtureScope
+            {
+                FixtureId = x.Id,
+                ApiFixtureId = x.ApiFixtureId,
+                KickoffAt = x.KickoffAt,
+                Status = x.Status
+            })
+            .AsQueryable();
+
+        if (fixtureId.HasValue)
+            query = query.Where(x => x.FixtureId == fixtureId.Value);
+
+        if (apiFixtureId.HasValue)
+            query = query.Where(x => x.ApiFixtureId == apiFixtureId.Value);
+
+        return await query.FirstOrDefaultAsync(cancellationToken);
+    }
+
     private async Task BroadcastLiveOddsUpdatesAsync(
         IEnumerable<FixtureScope> changedFixtures,
         CancellationToken cancellationToken)
@@ -566,6 +636,17 @@ public class LiveOddsService
                     fixture.ApiFixtureId);
             }
         }
+    }
+
+    private static bool ShouldAttemptLiveOddsCatchUp(StoredFixtureScope fixture)
+    {
+        var bucket = FixtureStatusMapper.GetStateBucket(fixture.Status);
+        var nowUtc = DateTime.UtcNow;
+        if (bucket is FixtureStateBucket.Postponed or FixtureStateBucket.Cancelled)
+            return false;
+
+        return fixture.KickoffAt >= nowUtc.AddHours(-4) &&
+               fixture.KickoffAt <= nowUtc.AddMinutes(15);
     }
 
     private static bool TryMapMatchWinnerOdds(
@@ -693,6 +774,14 @@ public class LiveOddsService
         public int Season { get; set; }
         public string HomeTeamName { get; set; } = string.Empty;
         public string AwayTeamName { get; set; } = string.Empty;
+    }
+
+    private sealed class StoredFixtureScope
+    {
+        public long FixtureId { get; set; }
+        public long ApiFixtureId { get; set; }
+        public DateTime KickoffAt { get; set; }
+        public string? Status { get; set; }
     }
 
     private sealed class LiveOddSnapshotKey

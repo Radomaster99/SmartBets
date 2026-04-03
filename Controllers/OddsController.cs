@@ -144,7 +144,7 @@ public class OddsController : ControllerBase
         if (!fixtureId.HasValue && !apiFixtureId.HasValue)
             return BadRequest("Either fixtureId or apiFixtureId is required.");
 
-        var result = await _liveOddsService.GetLiveOddsAsync(
+        var result = await _liveOddsService.GetLiveOddsWithCatchUpAsync(
             fixtureId,
             apiFixtureId,
             betId,
