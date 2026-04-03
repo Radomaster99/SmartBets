@@ -1965,6 +1965,16 @@ Behavior:
 Response:
 - `LiveOddsSyncResultDto`
 
+Useful diagnostic fields in `LiveOddsSyncResultDto`:
+- `ProviderFixturesReceived`
+- `ProviderBookmakersReceived`
+- `ProviderReturnedEmpty`
+- `UsedLeagueFallback`
+- `FallbackLeagueApiId`
+- `LocalFixturesResolved`
+- `ProviderFixtureApiIdsSample`
+- `MissingFixtureApiIdsSample`
+
 ### 26.5 `GET /api/odds/live`
 
 Purpose:

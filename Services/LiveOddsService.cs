@@ -121,6 +121,36 @@ public class LiveOddsService
             ExecutedAtUtc = DateTime.UtcNow
         };
 
+        if (remoteRows.Count == 0 && fixtureId.HasValue && !leagueId.HasValue)
+        {
+            var storedFixture = await ResolveStoredFixtureAsync(fixtureId: null, apiFixtureId: fixtureId.Value, cancellationToken);
+            if (storedFixture is not null && storedFixture.LeagueApiId > 0)
+            {
+                result.UsedLeagueFallback = true;
+                result.FallbackLeagueApiId = storedFixture.LeagueApiId;
+
+                var leagueRows = await _apiService.GetLiveOddsAsync(
+                    fixtureId: null,
+                    leagueId: storedFixture.LeagueApiId,
+                    betId,
+                    bookmakerId,
+                    cancellationToken);
+
+                remoteRows = leagueRows
+                    .Where(x => x.Fixture.Id == fixtureId.Value)
+                    .ToList();
+            }
+        }
+
+        result.ProviderFixturesReceived = remoteRows.Count;
+        result.ProviderBookmakersReceived = remoteRows.Sum(x => x.Bookmakers.Count);
+        result.ProviderReturnedEmpty = remoteRows.Count == 0;
+        result.ProviderFixtureApiIdsSample = remoteRows
+            .Select(x => x.Fixture.Id)
+            .Distinct()
+            .Take(10)
+            .ToList();
+
         if (remoteRows.Count == 0)
             return result;
 
@@ -139,6 +169,8 @@ public class LiveOddsService
                 Season = x.Season
             })
             .ToListAsync(cancellationToken);
+
+        result.LocalFixturesResolved = localFixtures.Count;
 
         var fixturesByApiId = localFixtures.ToDictionary(x => x.ApiFixtureId);
         var localFixtureIds = localFixtures.Select(x => x.FixtureId).ToList();
@@ -173,6 +205,7 @@ public class LiveOddsService
 
         var touchedScopes = new HashSet<string>(StringComparer.Ordinal);
         var changedFixturesByApiId = new Dictionary<long, FixtureScope>();
+        var missingFixtureApiIds = new HashSet<long>();
         var collectedAtUtc = DateTime.UtcNow;
 
         foreach (var remoteFixture in remoteRows)
@@ -180,6 +213,10 @@ public class LiveOddsService
             if (!fixturesByApiId.TryGetValue(remoteFixture.Fixture.Id, out var fixture))
             {
                 result.FixturesMissingInDatabase++;
+                if (missingFixtureApiIds.Count < 10)
+                {
+                    missingFixtureApiIds.Add(remoteFixture.Fixture.Id);
+                }
                 continue;
             }
 
@@ -283,6 +320,8 @@ public class LiveOddsService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         _dbContext.ChangeTracker.Clear();
+
+        result.MissingFixtureApiIdsSample = missingFixtureApiIds.ToList();
 
         var syncStateItems = touchedScopes
             .Select(ParseLeagueSeasonScope)
@@ -688,6 +727,7 @@ public class LiveOddsService
             {
                 FixtureId = x.Id,
                 ApiFixtureId = x.ApiFixtureId,
+                LeagueApiId = x.League.ApiLeagueId,
                 KickoffAt = x.KickoffAt,
                 Status = x.Status
             })
@@ -1075,6 +1115,7 @@ public class LiveOddsService
     {
         public long FixtureId { get; set; }
         public long ApiFixtureId { get; set; }
+        public long LeagueApiId { get; set; }
         public DateTime KickoffAt { get; set; }
         public string? Status { get; set; }
     }

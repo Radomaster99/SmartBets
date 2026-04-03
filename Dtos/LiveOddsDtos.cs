@@ -39,6 +39,14 @@ public class LiveOddsSyncResultDto
     public long? LeagueApiId { get; set; }
     public long? BetApiId { get; set; }
     public long? BookmakerApiId { get; set; }
+    public int ProviderFixturesReceived { get; set; }
+    public int ProviderBookmakersReceived { get; set; }
+    public bool ProviderReturnedEmpty { get; set; }
+    public bool UsedLeagueFallback { get; set; }
+    public long? FallbackLeagueApiId { get; set; }
+    public int LocalFixturesResolved { get; set; }
+    public IReadOnlyList<long> ProviderFixtureApiIdsSample { get; set; } = Array.Empty<long>();
+    public IReadOnlyList<long> MissingFixtureApiIdsSample { get; set; } = Array.Empty<long>();
     public int FixturesMatched { get; set; }
     public int FixturesMissingInDatabase { get; set; }
     public int BookmakersProcessed { get; set; }
