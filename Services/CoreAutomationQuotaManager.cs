@@ -4,6 +4,7 @@ public static class CoreAutomationJobNames
 {
     public const string CatalogRefresh = "catalog_refresh";
     public const string TeamsRolling = "teams_rolling";
+    public const string StandingsRolling = "standings_rolling";
     public const string FixturesRolling = "fixtures_rolling";
     public const string OddsPreMatch = "odds_pre_match";
     public const string OddsLive = "odds_live";
@@ -13,6 +14,7 @@ public static class CoreAutomationJobNames
     {
         CatalogRefresh,
         TeamsRolling,
+        StandingsRolling,
         FixturesRolling,
         OddsPreMatch,
         OddsLive,
@@ -176,6 +178,7 @@ public class CoreAutomationQuotaManager
         {
             CoreAutomationJobNames.CatalogRefresh => options.GetCatalogRefreshDailyBudget(),
             CoreAutomationJobNames.TeamsRolling => options.GetTeamsRollingDailyBudget(),
+            CoreAutomationJobNames.StandingsRolling => options.GetStandingsRollingDailyBudget(),
             CoreAutomationJobNames.FixturesRolling => options.GetFixturesRollingDailyBudget(),
             CoreAutomationJobNames.OddsPreMatch => options.GetOddsPreMatchDailyBudget(),
             CoreAutomationJobNames.OddsLive => options.GetOddsLiveDailyBudget(),

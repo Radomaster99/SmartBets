@@ -90,6 +90,7 @@ builder.Services.AddScoped<LiveAutomationOrchestrator>();
 builder.Services.AddScoped<CoreDataAutomationOrchestrator>();
 builder.Services.AddScoped<CoreAutomationCatalogRefreshJobService>();
 builder.Services.AddScoped<CoreAutomationTeamsRollingJobService>();
+builder.Services.AddScoped<CoreAutomationStandingsRollingJobService>();
 builder.Services.AddScoped<CoreAutomationFixturesRollingJobService>();
 builder.Services.AddScoped<CoreAutomationOddsPreMatchJobService>();
 builder.Services.AddScoped<CoreAutomationOddsLiveJobService>();

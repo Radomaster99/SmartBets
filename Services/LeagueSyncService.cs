@@ -170,6 +170,7 @@ public class LeagueSyncService
                     LeagueName = league.Name,
                     CountryName = item.Country.Name?.Trim() ?? string.Empty,
                     HasFixtures = apiCoverage is not null,
+                    HasStandings = apiCoverage?.Standings ?? false,
                     HasOdds = apiCoverage?.Odds ?? false
                 };
             }

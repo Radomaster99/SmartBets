@@ -17,6 +17,7 @@ public class CoreDataAutomationOrchestrator
     private readonly CoreAutomationQuotaManager _quotaManager;
     private readonly CoreAutomationCatalogRefreshJobService _catalogRefreshJobService;
     private readonly CoreAutomationTeamsRollingJobService _teamsRollingJobService;
+    private readonly CoreAutomationStandingsRollingJobService _standingsRollingJobService;
     private readonly CoreAutomationFixturesRollingJobService _fixturesRollingJobService;
     private readonly CoreAutomationOddsPreMatchJobService _oddsPreMatchJobService;
     private readonly CoreAutomationOddsLiveJobService _oddsLiveJobService;
@@ -34,6 +35,7 @@ public class CoreDataAutomationOrchestrator
         CoreAutomationQuotaManager quotaManager,
         CoreAutomationCatalogRefreshJobService catalogRefreshJobService,
         CoreAutomationTeamsRollingJobService teamsRollingJobService,
+        CoreAutomationStandingsRollingJobService standingsRollingJobService,
         CoreAutomationFixturesRollingJobService fixturesRollingJobService,
         CoreAutomationOddsPreMatchJobService oddsPreMatchJobService,
         CoreAutomationOddsLiveJobService oddsLiveJobService,
@@ -50,6 +52,7 @@ public class CoreDataAutomationOrchestrator
         _quotaManager = quotaManager;
         _catalogRefreshJobService = catalogRefreshJobService;
         _teamsRollingJobService = teamsRollingJobService;
+        _standingsRollingJobService = standingsRollingJobService;
         _fixturesRollingJobService = fixturesRollingJobService;
         _oddsPreMatchJobService = oddsPreMatchJobService;
         _oddsLiveJobService = oddsLiveJobService;
@@ -134,6 +137,16 @@ public class CoreDataAutomationOrchestrator
 
         await RunTeamsRollingJobAsync(
             currentTargets,
+            syncLookup,
+            options,
+            ShouldSync,
+            RegisterSync,
+            actions,
+            cancellationToken);
+
+        await RunStandingsRollingJobAsync(
+            currentTargets,
+            snapshot,
             syncLookup,
             options,
             ShouldSync,
@@ -334,6 +347,82 @@ public class CoreDataAutomationOrchestrator
         if (result.SyncedKeys.Count > 0)
         {
             actions.Add($"teams:{string.Join(',', result.SyncedKeys)}");
+        }
+    }
+
+    private async Task RunStandingsRollingJobAsync(
+        IReadOnlyList<CoreLeagueSeasonTarget> currentTargets,
+        CoreDataAutomationSnapshot snapshot,
+        IReadOnlyDictionary<string, DateTime> syncLookup,
+        CoreDataAutomationOptions options,
+        Func<string, long?, int?, TimeSpan, bool> shouldSync,
+        Action<string, long?, int?> registerSync,
+        List<string> actions,
+        CancellationToken cancellationToken)
+    {
+        var quotaMode = GetApiQuotaSnapshot().Mode;
+        var standingsCapableKeys = currentTargets
+            .Where(x => x.HasStandings)
+            .Select(x => BuildLeagueSeasonKey(x.LeagueApiId, x.Season))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var hotCandidates = SelectDueTargets(
+            snapshot.HotLeagueSeasons.Where(x => standingsCapableKeys.Contains(BuildLeagueSeasonKey(x.LeagueApiId, x.Season))),
+            "standings",
+            options.GetStandingsHotInterval(),
+            AdjustBatchSize(options.GetMaxStandingsLeagueSeasonsPerCycle(), quotaMode, 6, 2),
+            shouldSync,
+            syncLookup);
+
+        var hotKeys = hotCandidates
+            .Select(x => BuildLeagueSeasonKey(x.LeagueApiId, x.Season))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var baselineCandidates = SelectDueTargets(
+            currentTargets.Where(x => x.HasStandings && !hotKeys.Contains(BuildLeagueSeasonKey(x.LeagueApiId, x.Season))),
+            "standings",
+            options.GetStandingsInterval(),
+            AdjustBatchSize(options.GetMaxStandingsLeagueSeasonsPerCycle(), quotaMode, 6, 2),
+            shouldSync,
+            syncLookup);
+
+        var desiredRequests = hotCandidates.Count + baselineCandidates.Count;
+        if (desiredRequests == 0)
+            return;
+
+        var allowedRequests = _quotaManager.GetAllowedRequests(
+            CoreAutomationJobNames.StandingsRolling,
+            desiredRequests,
+            options,
+            GetApiQuotaSnapshot());
+
+        if (allowedRequests <= 0)
+        {
+            _quotaManager.MarkSkipped(CoreAutomationJobNames.StandingsRolling, "quota_budget_exhausted", desiredRequests);
+            return;
+        }
+
+        _quotaManager.MarkStarted(
+            CoreAutomationJobNames.StandingsRolling,
+            desiredRequests,
+            $"hot={hotCandidates.Count},baseline={baselineCandidates.Count}");
+
+        var selectedTargets = hotCandidates
+            .Concat(baselineCandidates)
+            .Take(allowedRequests)
+            .ToList();
+
+        var result = await _standingsRollingJobService.RunAsync(selectedTargets, registerSync, cancellationToken);
+
+        _quotaManager.MarkCompleted(
+            CoreAutomationJobNames.StandingsRolling,
+            result.RequestsUsed,
+            result.ProcessedItems,
+            $"synced={result.SyncedKeys.Count}");
+
+        if (result.SyncedKeys.Count > 0)
+        {
+            actions.Add($"standings:{string.Join(',', result.SyncedKeys)}");
         }
     }
 

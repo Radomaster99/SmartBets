@@ -7,6 +7,7 @@ public class CoreDataAutomationOptions
     public int ProviderDailySafetyBuffer { get; set; } = 5000;
     public int CatalogRefreshDailyBudget { get; set; } = 200;
     public int TeamsRollingDailyBudget { get; set; } = 5000;
+    public int StandingsRollingDailyBudget { get; set; } = 6000;
     public int FixturesRollingDailyBudget { get; set; } = 12000;
     public int OddsPreMatchDailyBudget { get; set; } = 22000;
     public int OddsLiveDailyBudget { get; set; } = 14000;
@@ -21,6 +22,9 @@ public class CoreDataAutomationOptions
     public int LiveStatusIntervalSeconds { get; set; } = 30;
     public int TeamsIntervalHours { get; set; } = 24;
     public int MaxTeamLeagueSeasonsPerCycle { get; set; } = 8;
+    public int StandingsIntervalHours { get; set; } = 24;
+    public int StandingsHotIntervalHours { get; set; } = 6;
+    public int MaxStandingsLeagueSeasonsPerCycle { get; set; } = 12;
     public int FixturesBaselineIntervalHours { get; set; } = 12;
     public int MaxBaselineFixtureLeagueSeasonsPerCycle { get; set; } = 8;
     public int FixtureHotIntervalMinutes { get; set; } = 120;
@@ -52,6 +56,8 @@ public class CoreDataAutomationOptions
     public TimeSpan GetBookmakersReferenceRefreshInterval() => TimeSpan.FromHours(Math.Clamp(BookmakersReferenceRefreshHours, 1, 168));
     public TimeSpan GetLiveStatusInterval() => TimeSpan.FromSeconds(Math.Clamp(LiveStatusIntervalSeconds, 15, 300));
     public TimeSpan GetTeamsInterval() => TimeSpan.FromHours(Math.Clamp(TeamsIntervalHours, 6, 72));
+    public TimeSpan GetStandingsInterval() => TimeSpan.FromHours(Math.Clamp(StandingsIntervalHours, 6, 72));
+    public TimeSpan GetStandingsHotInterval() => TimeSpan.FromHours(Math.Clamp(StandingsHotIntervalHours, 1, 24));
     public TimeSpan GetFixturesBaselineInterval() => TimeSpan.FromHours(Math.Clamp(FixturesBaselineIntervalHours, 2, 48));
     public TimeSpan GetFixtureHotInterval() => TimeSpan.FromMinutes(Math.Clamp(FixtureHotIntervalMinutes, 15, 360));
     public TimeSpan GetOddsFarInterval() => TimeSpan.FromHours(Math.Clamp(OddsFarIntervalHours, 1, 24));
@@ -65,6 +71,7 @@ public class CoreDataAutomationOptions
     public int GetAutomationSeasonLookaheadYears() => Math.Clamp(AutomationSeasonLookaheadYears, 0, 3);
 
     public int GetMaxTeamLeagueSeasonsPerCycle() => Math.Clamp(MaxTeamLeagueSeasonsPerCycle, 1, 50);
+    public int GetMaxStandingsLeagueSeasonsPerCycle() => Math.Clamp(MaxStandingsLeagueSeasonsPerCycle, 1, 50);
     public int GetMaxBaselineFixtureLeagueSeasonsPerCycle() => Math.Clamp(MaxBaselineFixtureLeagueSeasonsPerCycle, 1, 50);
     public int GetMaxHotFixtureLeagueSeasonsPerCycle() => Math.Clamp(MaxHotFixtureLeagueSeasonsPerCycle, 1, 50);
     public int GetMaxOddsFixturesPerCycle() => Math.Clamp(MaxOddsFixturesPerCycle, 1, 100);
@@ -80,6 +87,7 @@ public class CoreDataAutomationOptions
     public int GetProviderDailySafetyBuffer() => Math.Clamp(ProviderDailySafetyBuffer, 0, 30000);
     public int GetCatalogRefreshDailyBudget() => Math.Clamp(CatalogRefreshDailyBudget, 10, 5000);
     public int GetTeamsRollingDailyBudget() => Math.Clamp(TeamsRollingDailyBudget, 100, 30000);
+    public int GetStandingsRollingDailyBudget() => Math.Clamp(StandingsRollingDailyBudget, 100, 30000);
     public int GetFixturesRollingDailyBudget() => Math.Clamp(FixturesRollingDailyBudget, 100, 40000);
     public int GetOddsPreMatchDailyBudget() => Math.Clamp(OddsPreMatchDailyBudget, 100, 50000);
     public int GetOddsLiveDailyBudget() => Math.Clamp(OddsLiveDailyBudget, 100, 50000);

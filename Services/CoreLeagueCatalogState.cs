@@ -44,5 +44,6 @@ public sealed class CoreLeagueSeasonTarget
     public string LeagueName { get; set; } = string.Empty;
     public string CountryName { get; set; } = string.Empty;
     public bool HasFixtures { get; set; }
+    public bool HasStandings { get; set; }
     public bool HasOdds { get; set; }
 }

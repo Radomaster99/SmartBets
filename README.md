@@ -157,6 +157,7 @@ Stage 10 core-data automation refactor:
   - current league targets daily
   - bookmaker reference daily
   - teams rolling every 24h per current league-season
+  - standings rolling every 24h per current league-season, with a 6h refresh for hot leagues
   - full fixtures rolling every 12h per current league-season
   - hot fixture leagues every 2h
   - live fixture heartbeat every 30s for all leagues

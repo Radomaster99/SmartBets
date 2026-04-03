@@ -2369,28 +2369,33 @@ The primary automatic flow now does this:
 - all current league-seasons
 - one league-season is synced only when due
 
-3. Rolling fixture refresh
+3. Rolling standings refresh
+- all current league-seasons with standings coverage
+- hot leagues are refreshed more often than the daily baseline
+
+4. Rolling fixture refresh
 - full fixture sync for all current league-seasons
 - extra hot-window fixture refresh for leagues with matches around `now`
 
-4. Live scoreboard refresh
+5. Live scoreboard refresh
 - `fixtures?live=all`
 - no `supported_leagues` restriction
 
-5. Rolling pre-match odds refresh
+6. Rolling pre-match odds refresh
 - only for league-seasons with fixtures in the next 72 hours
 - refresh cadence depends on kickoff proximity
 
-6. Live odds refresh
+7. Live odds refresh
 - enabled by default in the new model
 - scoped only to currently live leagues
 
-7. Repair pass
+8. Repair pass
 - periodic recovery sync for hot league-seasons
 
 Internally these now run as separate automation jobs:
 - `catalog_refresh`
 - `teams_rolling`
+- `standings_rolling`
 - `fixtures_rolling`
 - `odds_pre_match`
 - `odds_live`
@@ -2406,6 +2411,8 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `BookmakersReferenceRefreshHours = 24`
 - `LiveStatusIntervalSeconds = 30`
 - `TeamsIntervalHours = 24`
+- `StandingsIntervalHours = 24`
+- `StandingsHotIntervalHours = 6`
 - `FixturesBaselineIntervalHours = 12`
 - `FixtureHotIntervalMinutes = 120`
 - `FixtureHotLookbackHours = 12`
@@ -2438,6 +2445,7 @@ Core automation daily budget defaults:
 - `ProviderDailySafetyBuffer = 5000`
 - `CatalogRefreshDailyBudget = 500`
 - `TeamsRollingDailyBudget = 9000`
+- `StandingsRollingDailyBudget = 6000`
 - `FixturesRollingDailyBudget = 18000`
 - `OddsPreMatchDailyBudget = 22000`
 - `OddsLiveDailyBudget = 12000`
