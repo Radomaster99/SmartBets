@@ -192,3 +192,5 @@ Stage 13 JWT auth for REST and SignalR:
 - `POST /api/auth/token` can mint a JWT for an already authenticated caller, for example one using the legacy `X-API-KEY`
 - new debug endpoint: `GET /api/auth/me`
 - legacy `X-API-KEY` remains available during the transition, but JWT is now the preferred frontend auth model
+- production recommendation: set a dedicated `JwtAuth:SigningKey` with at least 32 bytes
+- if `JwtAuth:SigningKey` is shorter or missing, the backend derives a stable 256-bit HMAC key from the configured secret so `POST /api/auth/token` does not fail on HS256 key length

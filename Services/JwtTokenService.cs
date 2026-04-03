@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using SmartBets.Dtos;
@@ -23,11 +22,7 @@ public class JwtTokenService
     public JwtTokenResponseDto CreateToken(ClaimsPrincipal principal)
     {
         var options = _options.Value;
-        var signingKey = ResolveSigningKey(options);
-        if (string.IsNullOrWhiteSpace(signingKey))
-        {
-            throw new InvalidOperationException("JWT signing key is missing. Configure JwtAuth:SigningKey or ApiAuth:Token.");
-        }
+        var signingKeyBytes = ResolveSigningKey(options);
 
         var nowUtc = DateTime.UtcNow;
         var expiresAtUtc = nowUtc.AddMinutes(options.GetAccessTokenMinutes());
@@ -48,7 +43,7 @@ public class JwtTokenService
         }
 
         var credentials = new SigningCredentials(
-            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            new SymmetricSecurityKey(signingKeyBytes),
             SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
@@ -70,11 +65,10 @@ public class JwtTokenService
         };
     }
 
-    private string ResolveSigningKey(JwtAuthOptions options)
+    private byte[] ResolveSigningKey(JwtAuthOptions options)
     {
-        if (!string.IsNullOrWhiteSpace(options.SigningKey))
-            return options.SigningKey.Trim();
-
-        return _configuration["ApiAuth:Token"]?.Trim() ?? string.Empty;
+        return JwtSigningKeyHelper.ResolveSigningKeyBytes(
+            options.SigningKey,
+            _configuration["ApiAuth:Token"]);
     }
 }

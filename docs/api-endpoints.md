@@ -2588,3 +2588,8 @@ Relevant config:
 - `JwtAuth:Audience`
 - `JwtAuth:SigningKey`
 - `JwtAuth:AccessTokenMinutes`
+
+Signing key note:
+- preferred production setup is a dedicated `JwtAuth:SigningKey` with at least 32 bytes
+- if the configured secret is shorter, the backend derives a stable 256-bit HMAC key from it
+- this keeps HS256 valid even when the legacy API key is shorter than 256 bits

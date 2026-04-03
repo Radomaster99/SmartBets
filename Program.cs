@@ -14,12 +14,7 @@ using SmartBets.Services;
 var builder = WebApplication.CreateBuilder(args);
 var apiKeyToken = builder.Configuration["ApiAuth:Token"];
 var jwtSigningKey = builder.Configuration["JwtAuth:SigningKey"];
-var resolvedJwtSigningKey = !string.IsNullOrWhiteSpace(jwtSigningKey)
-    ? jwtSigningKey
-    : apiKeyToken;
-var effectiveJwtSigningKey = string.IsNullOrWhiteSpace(resolvedJwtSigningKey)
-    ? "development-only-placeholder-signing-key"
-    : resolvedJwtSigningKey;
+var effectiveJwtSigningKeyBytes = JwtSigningKeyHelper.ResolveSigningKeyBytes(jwtSigningKey, apiKeyToken);
 var authEnabled = !string.IsNullOrWhiteSpace(apiKeyToken) || !string.IsNullOrWhiteSpace(jwtSigningKey);
 
 // Controllers + JSON
@@ -144,7 +139,7 @@ builder.Services.AddAuthentication(options =>
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(effectiveJwtSigningKey)),
+            IssuerSigningKey = new SymmetricSecurityKey(effectiveJwtSigningKeyBytes),
             ValidateIssuer = true,
             ValidIssuer = builder.Configuration["JwtAuth:Issuer"] ?? "SmartBets",
             ValidateAudience = true,
