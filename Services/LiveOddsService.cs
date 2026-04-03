@@ -451,47 +451,64 @@ public class LiveOddsService
         bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
-        var result = await GetLiveOddsAsync(
-            fixtureId,
-            apiFixtureId,
-            betId,
-            bookmakerId,
-            latestOnly,
-            cancellationToken);
-
-        if (result.Count > 0)
-            return result;
-
-        var fixture = await ResolveStoredFixtureAsync(fixtureId, apiFixtureId, cancellationToken);
-        if (fixture is null || !ShouldAttemptLiveOddsCatchUp(fixture))
-            return result;
-
         try
         {
-            await SyncLiveOddsAsync(
-                fixtureId: fixture.ApiFixtureId,
-                leagueId: null,
+            var result = await GetLiveOddsAsync(
+                fixtureId,
+                apiFixtureId,
                 betId,
                 bookmakerId,
+                latestOnly,
                 cancellationToken);
+
+            if (result.Count > 0)
+                return result;
+
+            var fixture = await ResolveStoredFixtureAsync(fixtureId, apiFixtureId, cancellationToken);
+            if (fixture is null || !ShouldAttemptLiveOddsCatchUp(fixture))
+                return result;
+
+            try
+            {
+                await SyncLiveOddsAsync(
+                    fixtureId: fixture.ApiFixtureId,
+                    leagueId: null,
+                    betId,
+                    bookmakerId,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Live odds catch-up failed for fixture {ApiFixtureId}. Returning cached data only.",
+                    fixture.ApiFixtureId);
+
+                return result;
+            }
+
+            return await GetLiveOddsAsync(
+                fixtureId,
+                apiFixtureId,
+                betId,
+                bookmakerId,
+                latestOnly,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(
                 ex,
-                "Live odds catch-up failed for fixture {ApiFixtureId}. Returning cached data only.",
-                fixture.ApiFixtureId);
+                "Live odds read failed for fixtureId={FixtureId}, apiFixtureId={ApiFixtureId}. Returning no live odds.",
+                fixtureId,
+                apiFixtureId);
 
-            return result;
+            return Array.Empty<LiveOddsMarketDto>();
         }
-
-        return await GetLiveOddsAsync(
-            fixtureId,
-            apiFixtureId,
-            betId,
-            bookmakerId,
-            latestOnly,
-            cancellationToken);
     }
 
     public async Task<IReadOnlyList<FixtureLiveOddsSummaryDto>> GetFixtureOddsSummariesAsync(
