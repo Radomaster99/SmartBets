@@ -236,6 +236,18 @@ Query параметри:
 - `CountryId`
 - `CountryName`
 
+### 6.3 `GET /api/teams/{apiTeamId}`
+
+Предназначение:
+- връща един отбор по външния `ApiTeamId`
+- подходящо за team page header и widget integration
+
+Route параметри:
+- `apiTeamId` - required
+
+Отговор:
+- `TeamDto`
+
 ## 7. Fixtures
 
 Base route:
@@ -494,6 +506,8 @@ Query параметри:
 
 `StandingDto`:
 - `Rank`
+- `TeamId`
+- `ApiTeamId`
 - `TeamName`
 - `TeamLogoUrl`
 - `Points`

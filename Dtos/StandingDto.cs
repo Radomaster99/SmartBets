@@ -3,6 +3,8 @@
 public class StandingDto
 {
     public int Rank { get; set; }
+    public long TeamId { get; set; }
+    public long ApiTeamId { get; set; }
     public string TeamName { get; set; } = string.Empty;
     public string? TeamLogoUrl { get; set; }
 

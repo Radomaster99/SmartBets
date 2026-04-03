@@ -143,6 +143,41 @@ public class TeamsController : ControllerBase
         return Ok(teams);
     }
 
+    [HttpGet("{apiTeamId:long}")]
+    public async Task<IActionResult> GetByApiTeamId(long apiTeamId, CancellationToken cancellationToken)
+    {
+        if (apiTeamId <= 0)
+            return BadRequest("apiTeamId must be greater than 0.");
+
+        var team = await _dbContext.Teams
+            .AsNoTracking()
+            .Include(x => x.Country)
+            .Where(x => x.ApiTeamId == apiTeamId)
+            .Select(x => new TeamDto
+            {
+                Id = x.Id,
+                ApiTeamId = x.ApiTeamId,
+                Name = x.Name,
+                Code = x.Code,
+                LogoUrl = x.LogoUrl,
+                Founded = x.Founded,
+                IsNational = x.IsNational,
+                VenueName = x.VenueName,
+                VenueAddress = x.VenueAddress,
+                VenueCity = x.VenueCity,
+                VenueCapacity = x.VenueCapacity,
+                VenueSurface = x.VenueSurface,
+                VenueImageUrl = x.VenueImageUrl,
+                CountryId = x.CountryId,
+                CountryName = x.Country != null ? x.Country.Name : null
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return team is null
+            ? NotFound($"Team {apiTeamId} was not found.")
+            : Ok(team);
+    }
+
     [HttpPost("statistics/sync")]
     public async Task<IActionResult> SyncStatistics(
         [FromQuery] long leagueId,

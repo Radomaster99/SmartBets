@@ -80,6 +80,8 @@ public class StandingsController : ControllerBase
             .Select(x => new StandingDto
             {
                 Rank = x.Rank,
+                TeamId = x.TeamId,
+                ApiTeamId = x.Team.ApiTeamId,
                 TeamName = x.Team.Name,
                 TeamLogoUrl = x.Team.LogoUrl,
                 Points = x.Points,

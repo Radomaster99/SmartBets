@@ -185,6 +185,11 @@ Accept: application/json
 POST {{SmartBets_HostAddress}}/api/teams/statistics/sync?leagueId=39&season=2025&maxTeams=20&force=false
 X-API-KEY: {{ApiKey}}
 
+### Team by API team id
+GET {{SmartBets_HostAddress}}/api/teams/33
+X-API-KEY: {{ApiKey}}
+Accept: application/json
+
 ### Team statistics by API team id
 GET {{SmartBets_HostAddress}}/api/teams/33/statistics?leagueId=39&season=2025
 X-API-KEY: {{ApiKey}}
