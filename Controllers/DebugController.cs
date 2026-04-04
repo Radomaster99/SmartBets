@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
+using SmartBets.Enums;
 using SmartBets.Services;
 
 namespace SmartBets.Controllers;
@@ -167,5 +168,172 @@ public class DebugController : ControllerBase
                 }),
             LocalMatchingFixtures = localFixtures
         });
+    }
+
+    [HttpGet("provider/live-odds/candidates")]
+    public async Task<IActionResult> ProviderLiveOddsCandidates(
+        [FromQuery] int maxLeagues = 4,
+        [FromQuery] int maxFixtures = 10,
+        CancellationToken cancellationToken = default)
+    {
+        maxLeagues = Math.Clamp(maxLeagues, 1, 10);
+        maxFixtures = Math.Clamp(maxFixtures, 1, 25);
+
+        var liveStatuses = FixtureStatusMapper
+            .GetStatusesForBucket(FixtureStateBucket.Live)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var localLiveFixtures = await _dbContext.Fixtures
+            .AsNoTracking()
+            .Where(x => x.Status != null && liveStatuses.Contains(x.Status))
+            .Select(x => new
+            {
+                x.Id,
+                x.ApiFixtureId,
+                LeagueApiId = x.League.ApiLeagueId,
+                x.Season,
+                x.Status,
+                x.KickoffAt,
+                HomeTeamName = x.HomeTeam.Name,
+                AwayTeamName = x.AwayTeam.Name
+            })
+            .ToListAsync(cancellationToken);
+
+        if (localLiveFixtures.Count == 0)
+        {
+            return Ok(new
+            {
+                LocalLiveFixtures = 0,
+                ProviderFixturesReceived = 0,
+                Candidates = Array.Empty<object>()
+            });
+        }
+
+        var targetLeagueApiIds = localLiveFixtures
+            .Select(x => x.LeagueApiId)
+            .Distinct()
+            .OrderBy(x => x)
+            .Take(maxLeagues)
+            .ToList();
+
+        var scopedLocalFixtures = localLiveFixtures
+            .Where(x => targetLeagueApiIds.Contains(x.LeagueApiId))
+            .ToList();
+
+        var providerStatsByFixtureApiId = new Dictionary<long, ProviderFixtureStats>();
+        var providerFixturesReceived = 0;
+
+        foreach (var leagueApiId in targetLeagueApiIds)
+        {
+            var providerRows = await _footballApiService.GetLiveOddsAsync(
+                fixtureId: null,
+                leagueId: leagueApiId,
+                betId: null,
+                bookmakerId: null,
+                cancellationToken: cancellationToken);
+
+            providerFixturesReceived += providerRows.Count;
+
+            foreach (var row in providerRows)
+            {
+                providerStatsByFixtureApiId[row.Fixture.Id] = new ProviderFixtureStats
+                {
+                    ProviderBookmakersReceived = row.Bookmakers.Count > 0 ? row.Bookmakers.Count : row.Odds.Count > 0 ? 1 : 0,
+                    ProviderBetsReceived = row.Bookmakers.Count > 0 ? row.Bookmakers.Sum(x => x.Bets.Count) : row.Odds.Count,
+                    ProviderValuesReceived = row.Bookmakers.Count > 0
+                        ? row.Bookmakers.Sum(x => x.Bets.Sum(y => y.Values.Count))
+                        : row.Odds.Sum(x => x.Values.Count)
+                };
+            }
+        }
+
+        var localFixtureIds = scopedLocalFixtures.Select(x => x.Id).ToList();
+
+        var recommendedPrematchBookmakers = await _dbContext.PreMatchOdds
+            .AsNoTracking()
+            .Where(x => localFixtureIds.Contains(x.FixtureId) && x.Bookmaker.ApiBookmakerId > 0)
+            .GroupBy(x => new { x.FixtureId, x.Bookmaker.ApiBookmakerId })
+            .Select(x => new
+            {
+                x.Key.FixtureId,
+                x.Key.ApiBookmakerId,
+                LastCollectedAtUtc = x.Max(y => y.CollectedAt)
+            })
+            .ToListAsync(cancellationToken);
+
+        var storedLiveBookmakers = await _dbContext.LiveOdds
+            .AsNoTracking()
+            .Where(x => localFixtureIds.Contains(x.FixtureId))
+            .GroupBy(x => new { x.FixtureId, x.Bookmaker.ApiBookmakerId })
+            .Select(x => new
+            {
+                x.Key.FixtureId,
+                x.Key.ApiBookmakerId,
+                LastCollectedAtUtc = x.Max(y => y.CollectedAtUtc)
+            })
+            .ToListAsync(cancellationToken);
+
+        var candidates = scopedLocalFixtures
+            .Select(x =>
+            {
+                providerStatsByFixtureApiId.TryGetValue(x.ApiFixtureId, out var providerStats);
+
+                var prematchBookmakerApiIds = recommendedPrematchBookmakers
+                    .Where(y => y.FixtureId == x.Id)
+                    .OrderByDescending(y => y.LastCollectedAtUtc)
+                    .ThenBy(y => y.ApiBookmakerId)
+                    .Select(y => y.ApiBookmakerId)
+                    .Take(5)
+                    .ToList();
+
+                var storedLiveBookmakerApiIds = storedLiveBookmakers
+                    .Where(y => y.FixtureId == x.Id && y.ApiBookmakerId > 0)
+                    .OrderByDescending(y => y.LastCollectedAtUtc)
+                    .ThenBy(y => y.ApiBookmakerId)
+                    .Select(y => y.ApiBookmakerId)
+                    .Take(5)
+                    .ToList();
+
+                var hasSyntheticStoredRows = storedLiveBookmakers.Any(y => y.FixtureId == x.Id && y.ApiBookmakerId == 0);
+
+                return new
+                {
+                    x.ApiFixtureId,
+                    x.LeagueApiId,
+                    x.Season,
+                    x.Status,
+                    KickoffAtUtc = x.KickoffAt,
+                    x.HomeTeamName,
+                    x.AwayTeamName,
+                    ProviderHasFixture = providerStats is not null,
+                    ProviderBookmakersReceived = providerStats?.ProviderBookmakersReceived ?? 0,
+                    ProviderBetsReceived = providerStats?.ProviderBetsReceived ?? 0,
+                    ProviderValuesReceived = providerStats?.ProviderValuesReceived ?? 0,
+                    RecommendedBookmakerApiIds = prematchBookmakerApiIds,
+                    StoredLiveRealBookmakerApiIds = storedLiveBookmakerApiIds,
+                    StoredLiveHasRealBookmakers = storedLiveBookmakerApiIds.Count > 0,
+                    StoredLiveHasSyntheticRows = hasSyntheticStoredRows
+                };
+            })
+            .OrderByDescending(x => x.ProviderValuesReceived > 0)
+            .ThenByDescending(x => x.ProviderHasFixture)
+            .ThenByDescending(x => x.KickoffAtUtc)
+            .Take(maxFixtures)
+            .ToList();
+
+        return Ok(new
+        {
+            LocalLiveFixtures = localLiveFixtures.Count,
+            ScopedLeaguesChecked = targetLeagueApiIds,
+            ProviderFixturesReceived = providerFixturesReceived,
+            Candidates = candidates
+        });
+    }
+
+    private sealed class ProviderFixtureStats
+    {
+        public int ProviderBookmakersReceived { get; set; }
+        public int ProviderBetsReceived { get; set; }
+        public int ProviderValuesReceived { get; set; }
     }
 }

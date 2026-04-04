@@ -930,6 +930,46 @@ Notes:
 - if `ProviderFixturesReceived = 0` and `ProviderValuesReceived = 0`, the issue is upstream provider availability
 - if provider fixtures are returned but `LocalMatchingFixtures` is empty, the issue is local fixture matching
 
+### 14.4 `GET /api/debug/provider/live-odds/candidates`
+
+Purpose:
+- helps find a truly current live fixture for end-to-end bookmaker identity checks
+- cross-checks local live fixtures against the current provider live odds feed
+- suggests likely bookmaker ids from stored pre-match odds for bookmaker-scoped debug calls
+
+Query parameters:
+- `maxLeagues` - optional, default `4`, clamp `1..10`
+- `maxFixtures` - optional, default `10`, clamp `1..25`
+
+Response:
+- `LocalLiveFixtures`
+- `ScopedLeaguesChecked`
+- `ProviderFixturesReceived`
+- `Candidates`
+
+Each candidate contains:
+- `ApiFixtureId`
+- `LeagueApiId`
+- `Season`
+- `Status`
+- `KickoffAtUtc`
+- `HomeTeamName`
+- `AwayTeamName`
+- `ProviderHasFixture`
+- `ProviderBookmakersReceived`
+- `ProviderBetsReceived`
+- `ProviderValuesReceived`
+- `RecommendedBookmakerApiIds`
+- `StoredLiveRealBookmakerApiIds`
+- `StoredLiveHasRealBookmakers`
+- `StoredLiveHasSyntheticRows`
+
+Recommended usage:
+- first call this endpoint to locate a live fixture where `ProviderValuesReceived > 0`
+- then test:
+  - `GET /api/debug/provider/live-odds?fixtureId=...&bookmakerId=...`
+  - `GET /api/fixtures/{apiFixtureId}/odds/live`
+
 ## 15. Практически бележки за frontend
 
 ### 15.1 Кои endpoint-и са подходящи за UI списъци
