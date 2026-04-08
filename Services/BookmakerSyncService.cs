@@ -11,6 +11,8 @@ public class BookmakerSyncResult
     public int Updated { get; set; }
     public int PreMatchOddsReferences { get; set; }
     public int LiveOddsReferences { get; set; }
+    public int LiveOddsRowsReassigned { get; set; }
+    public int SyntheticRowsDeleted { get; set; }
     public int RemoteCallsMade { get; set; }
     public string Source { get; set; } = "local_cache";
 }
@@ -89,9 +91,13 @@ public class BookmakerSyncService
 
         var result = new BookmakerSyncResult();
 
-        var scopedFixtureIds = _dbContext.Fixtures
+        var scopedFixtureIds = await _dbContext.Fixtures
             .Where(x => x.League.ApiLeagueId == leagueId && x.Season == season)
-            .Select(x => x.Id);
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        if (scopedFixtureIds.Count == 0)
+            return result;
 
         var preMatchBookmakerIds = await _dbContext.PreMatchOdds
             .AsNoTracking()
@@ -113,6 +119,64 @@ public class BookmakerSyncService
             .Concat(liveOddsBookmakerIds)
             .Distinct()
             .Count();
+
+        var syntheticBookmaker = await _dbContext.Bookmakers
+            .FirstOrDefaultAsync(
+                x => x.ApiBookmakerId == SingleSourceLiveBookmakerIdentity.SyntheticApiBookmakerId,
+                cancellationToken);
+
+        var realSingleSourceBookmaker = await _dbContext.Bookmakers
+            .AsNoTracking()
+            .Where(x =>
+                x.ApiBookmakerId > SingleSourceLiveBookmakerIdentity.SyntheticApiBookmakerId &&
+                SingleSourceLiveBookmakerIdentity.IsSingleSourceName(x.Name))
+            .OrderBy(x => x.ApiBookmakerId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (syntheticBookmaker is not null &&
+            !SingleSourceLiveBookmakerIdentity.IsSingleSourceName(syntheticBookmaker.Name))
+        {
+            syntheticBookmaker.Name = SingleSourceLiveBookmakerIdentity.Name;
+            result.Updated++;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (syntheticBookmaker is not null &&
+            realSingleSourceBookmaker is not null &&
+            syntheticBookmaker.Id != realSingleSourceBookmaker.Id)
+        {
+            result.LiveOddsRowsReassigned = await _dbContext.LiveOdds
+                .Where(x =>
+                    x.BookmakerId == syntheticBookmaker.Id &&
+                    scopedFixtureIds.Contains(x.FixtureId))
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(x => x.BookmakerId, realSingleSourceBookmaker.Id),
+                    cancellationToken);
+
+            if (result.LiveOddsRowsReassigned > 0)
+            {
+                result.Updated++;
+            }
+
+            var syntheticStillReferenced =
+                await _dbContext.LiveOdds.AnyAsync(x => x.BookmakerId == syntheticBookmaker.Id, cancellationToken) ||
+                await _dbContext.PreMatchOdds.AnyAsync(x => x.BookmakerId == syntheticBookmaker.Id, cancellationToken) ||
+                await _dbContext.OddsOpenCloses.AnyAsync(x => x.BookmakerId == syntheticBookmaker.Id, cancellationToken) ||
+                await _dbContext.OddsMovements.AnyAsync(x => x.BookmakerId == syntheticBookmaker.Id, cancellationToken) ||
+                await _dbContext.MarketConsensuses.AnyAsync(
+                    x =>
+                        x.BestHomeBookmakerId == syntheticBookmaker.Id ||
+                        x.BestDrawBookmakerId == syntheticBookmaker.Id ||
+                        x.BestAwayBookmakerId == syntheticBookmaker.Id,
+                    cancellationToken);
+
+            if (!syntheticStillReferenced)
+            {
+                _dbContext.Bookmakers.Remove(syntheticBookmaker);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                result.SyntheticRowsDeleted = 1;
+            }
+        }
 
         return result;
     }

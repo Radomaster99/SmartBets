@@ -636,7 +636,8 @@ Base route:
 ### 10.1 `POST /api/bookmakers/sync`
 
 Предназначение:
-- синхронизира bookmaker catalog за league/season
+- maintenance/rebuild endpoint за bookmaker catalog-а на конкретна league/season
+- гледа локалните `pre_match_odds` и `live_odds` references за scope-а
 - обновява sync state `bookmakers`
 
 Query параметри:
@@ -646,20 +647,29 @@ Query параметри:
 Важно:
 - този endpoint синхронизира bookmaker записи
 - не записва odds snapshots в `pre_match_odds`
+- ако има real `Bet365` bookmaker, endpoint-ът reassign-ва scoped live odds rows от synthetic fallback bookmaker (`ApiBookmakerId = 0`) към real bookmaker-а
+- ако synthetic fallback bookmaker вече не е рефериран никъде след merge-а, endpoint-ът го изтрива от catalog-а
 
 Отговор:
 - `Message`
 - `LeagueId`
 - `Season`
 - `LastSyncedAtUtc`
+- `PreMatchOddsReferences`
+- `LiveOddsReferences`
 - `Processed`
 - `Inserted`
 - `Updated`
+- `LiveOddsRowsReassigned`
+- `SyntheticRowsDeleted`
 
 ### 10.2 `GET /api/bookmakers`
 
 Предназначение:
 - връща локално записаните bookmakers
+
+Поведение:
+- ако има real `Bet365` bookmaker, endpoint-ът suppress-ва synthetic fallback row-а с `ApiBookmakerId = 0`, за да не връща дублирана bookmaker identity
 
 Отговор:
 - масив от `BookmakerDto`
@@ -915,6 +925,7 @@ Response:
 - `LeagueId`
 - `BetId`
 - `BookmakerId`
+- `DirectOddsResolvedBookmaker`
 - `ProviderFixturesReceived`
 - `ProviderFixtureApiIds`
 - `ProviderBookmakersReceived`
@@ -927,6 +938,9 @@ Notes:
 - the endpoint understands both live odds provider response shapes currently seen in production:
   - legacy `bookmakers[].bets[].values`
   - direct `odds[].values`
+- in the current production provider behavior, direct `odds[].values` effectively represent a single live source bookmaker: `Bet365`
+- `odds[].id` is the live bet/market id, not the bookmaker id
+- `bookmakerId` remains useful for diagnostics, but direct `odds[]` responses are not relabeled to the requested bookmaker anymore
 - if `ProviderFixturesReceived = 0` and `ProviderValuesReceived = 0`, the issue is upstream provider availability
 - if provider fixtures are returned but `LocalMatchingFixtures` is empty, the issue is local fixture matching
 
@@ -935,7 +949,7 @@ Notes:
 Purpose:
 - helps find a truly current live fixture for end-to-end bookmaker identity checks
 - cross-checks local live fixtures against the current provider live odds feed
-- suggests likely bookmaker ids from stored pre-match odds for bookmaker-scoped debug calls
+- suggests likely bookmaker ids from stored pre-match odds for catalog cross-checking
 
 Query parameters:
 - `maxLeagues` - optional, default `4`, clamp `1..10`
@@ -945,6 +959,7 @@ Response:
 - `LocalLiveFixtures`
 - `ScopedLeaguesChecked`
 - `ProviderFixturesReceived`
+- `ResolvedLiveBookmaker`
 - `Candidates`
 
 Each candidate contains:
@@ -959,15 +974,14 @@ Each candidate contains:
 - `ProviderBookmakersReceived`
 - `ProviderBetsReceived`
 - `ProviderValuesReceived`
-- `RecommendedBookmakerApiIds`
-- `StoredLiveRealBookmakerApiIds`
+- `StoredLiveBookmakerApiIds`
 - `StoredLiveHasRealBookmakers`
 - `StoredLiveHasSyntheticRows`
 
 Recommended usage:
 - first call this endpoint to locate a live fixture where `ProviderValuesReceived > 0`
 - then test:
-  - `GET /api/debug/provider/live-odds?fixtureId=...&bookmakerId=...`
+  - `GET /api/debug/provider/live-odds?fixtureId=...`
   - `GET /api/fixtures/{apiFixtureId}/odds/live`
 
 ## 15. Практически бележки за frontend
@@ -2027,7 +2041,6 @@ Query parameters:
 - `fixtureId` - optional
 - `leagueId` - optional
 - `betId` - optional
-- `bookmakerId` - optional
 
 Validation:
 - requires either `fixtureId` or `leagueId`
@@ -2038,11 +2051,13 @@ Behavior:
 - the live odds provider currently appears in two shapes and the backend accepts both:
   - legacy `bookmakers[].bets[].values`
   - direct `odds[].values`
-- when the provider omits bookmaker information and returns direct `odds[]`, the backend stores the rows under a synthetic bookmaker unless the sync request is explicitly scoped by `bookmakerId`
-- if the sync request includes `bookmakerId`, the backend stores that bookmaker's real id/name even when the provider response is still direct `odds[]`
-- if the sync request does not include `bookmakerId`, the fallback remains a synthetic bookmaker:
+- current production behavior indicates that live `odds[]` are a single-source feed for `Bet365`, not a multi-bookmaker market
+- when the provider omits bookmaker information and returns direct `odds[]`, the backend materializes the rows under `Bet365`
+- if `Bet365` already exists in the local bookmaker catalog, the backend reuses its real `ApiBookmakerId`
+- if the local bookmaker catalog does not have `Bet365` yet, the temporary fallback is:
   - `ApiBookmakerId = 0`
-  - `Bookmaker = API-Football Live Feed`
+  - `Bookmaker = Bet365`
+- `odds[].id` is the live bet/market id, not the bookmaker id
 - snapshots are stored only when the latest local value has changed
 - sync state `live_odds` is updated per touched league/season
 
@@ -2050,6 +2065,9 @@ Response:
 - `LiveOddsSyncResultDto`
 
 Useful diagnostic fields in `LiveOddsSyncResultDto`:
+- `BookmakerApiId`
+- `Bookmaker`
+- `BookmakerIdentityType`
 - `ProviderFixturesReceived`
 - `ProviderBookmakersReceived`
 - `ProviderReturnedEmpty`
@@ -2058,6 +2076,11 @@ Useful diagnostic fields in `LiveOddsSyncResultDto`:
 - `LocalFixturesResolved`
 - `ProviderFixtureApiIdsSample`
 - `MissingFixtureApiIdsSample`
+
+Contract note:
+- `BookmakerApiId` and `Bookmaker` describe the resolved bookmaker identity actually used for storage, only when that identity is unambiguous
+- in the current live direct-odds flow this usually resolves to `Bet365`
+- if a response spans multiple real bookmakers from a legacy provider shape, the single resolved bookmaker fields can stay empty
 
 ### 26.5 `GET /api/odds/live`
 
@@ -2068,7 +2091,6 @@ Query parameters:
 - `fixtureId` - optional local fixture id
 - `apiFixtureId` - optional API fixture id
 - `betId` - optional live bet id
-- `bookmakerId` - optional API bookmaker id
 - `latestOnly` - optional, default `true`
 
 Validation:
@@ -2083,6 +2105,7 @@ Response:
 - `BookmakerId`
 - `ApiBookmakerId`
 - `Bookmaker`
+- `BookmakerIdentityType`
 - `ApiBetId`
 - `BetName`
 - `CollectedAtUtc`
@@ -2091,10 +2114,13 @@ Response:
 - `Values`
 
 Important note:
-- `Bookmaker` can be the synthetic source `API-Football Live Feed`
-- this happens when API-Football returns live odds as direct `odds[]` without bookmaker-level data
-- in that case `ApiBookmakerId` is `0`
-- when real bookmaker rows exist for the same fixture, the read path prefers them and suppresses the synthetic fallback rows
+- `ApiBetId` and `BetName` identify the live market, not the casino/bookmaker
+- in the current production provider behavior, live odds effectively come from a single source bookmaker: `Bet365`
+- when API-Football returns direct `odds[]` without bookmaker-level data, the backend resolves them to `Bet365`
+- `BookmakerIdentityType` is:
+  - `real` when the row is attached to a real bookmaker id
+  - `synthetic` only as a fallback when the local catalog still cannot resolve `Bet365`
+- when real bookmaker rows exist for the same fixture, the read path prefers them and suppresses synthetic fallback rows
 
 `LiveOddsValueDto`:
 - `OutcomeLabel`
@@ -2118,7 +2144,6 @@ Purpose:
 
 Query parameters:
 - `betId` - optional
-- `bookmakerId` - optional API bookmaker id
 - `latestOnly` - optional, default `true`
 
 Response:
@@ -2256,6 +2281,13 @@ A new background cleanup worker periodically trims:
 - `odds_movements`
 - `market_consensus`
 
+Current optimization behavior:
+- raw `live_odds` snapshots are still capped by `LiveOddsRetentionDays`
+- additionally, live odds for fixtures that are no longer live are trimmed much earlier through `LiveOddsFinishedFixtureRetentionHours`
+- raw `pre_match_odds` snapshots are trimmed by fixture age through `PreMatchOddsRetentionDays`
+- compact derived odds analytics can now live longer than the raw snapshots through `DerivedOddsAnalyticsRetentionDays`
+- this keeps the useful compact read models longer while reducing table growth from raw odds history
+
 Config section:
 
 `DataRetention`
@@ -2266,7 +2298,16 @@ Fields:
 - `ErrorRetryMinutes`
 - `SyncErrorsRetentionDays`
 - `LiveOddsRetentionDays`
+- `LiveOddsFinishedFixtureRetentionHours`
 - `PreMatchOddsRetentionDays`
+- `DerivedOddsAnalyticsRetentionDays`
+
+Current default example:
+- `PreMatchOddsRetentionDays = 14`
+
+Database apply:
+- EF migration: `Migrations/20260408191524_Stage10OddsRetentionOptimization.cs`
+- SQL fallback: `sql/stage10_odds_retention_optimization.sql`
 
 ### 28.5 Bookmakers Sync Change
 
@@ -2389,6 +2430,8 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `CatalogRefreshHours = 24`
 - `BookmakersReferenceRefreshHours = 24`
 - `LiveStatusIntervalSeconds = 30`
+- `LiveStatusEndgameIntervalSeconds = 15`
+- `LiveStatusEndgameElapsedMinutes = 80`
 - `TeamsIntervalHours = 24`
 - `StandingsIntervalHours = 24`
 - `StandingsHotIntervalHours = 6`
@@ -2401,12 +2444,16 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `OddsMidIntervalHours = 2`
 - `OddsNearIntervalMinutes = 30`
 - `OddsFinalIntervalMinutes = 15`
-- `LiveOddsIntervalSeconds = 60`
-- `TrackLiveOddsPerBookmaker = true`
-- `MaxLiveOddsBookmakersPerLeaguePerCycle = 4`
+- `LiveOddsIntervalSeconds = 30`
+- `MaxLiveOddsLeaguesPerCycle = 10`
 - `RepairIntervalHours = 4`
 
-### 29.5 Budget Strategy For 70 000 Requests/Day
+Live odds source note:
+- the current production provider behavior is effectively single-source for `Bet365`
+- the old per-bookmaker live fan-out config/state has been removed from the active automation path
+- when live fixtures enter the closing phase, the automation loop temporarily tightens the live-status heartbeat and prioritizes status catch-up for fixtures that may have just fallen out of the provider live feed
+
+### 29.5 Budget Strategy For 75 000 Requests/Day
 
 The new defaults are designed to stay comfortably below the daily limit, not to spend the entire limit.
 
@@ -2422,14 +2469,14 @@ Quota guard defaults:
 - `CriticalDailyRemainingThreshold = 2500`
 
 Core automation daily budget defaults:
-- `AutomationDailyBudget = 65000`
+- `AutomationDailyBudget = 70000`
 - `ProviderDailySafetyBuffer = 5000`
 - `CatalogRefreshDailyBudget = 500`
 - `TeamsRollingDailyBudget = 9000`
 - `StandingsRollingDailyBudget = 6000`
-- `FixturesRollingDailyBudget = 18000`
+- `FixturesRollingDailyBudget = 22000`
 - `OddsPreMatchDailyBudget = 22000`
-- `OddsLiveDailyBudget = 12000`
+- `OddsLiveDailyBudget = 18000`
 - `RepairDailyBudget = 3500`
 
 When quota gets tighter:

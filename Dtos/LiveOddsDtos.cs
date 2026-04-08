@@ -25,6 +25,7 @@ public class LiveOddsMarketDto
     public long BookmakerId { get; set; }
     public long ApiBookmakerId { get; set; }
     public string Bookmaker { get; set; } = string.Empty;
+    public string BookmakerIdentityType { get; set; } = "real";
     public long ApiBetId { get; set; }
     public string BetName { get; set; } = string.Empty;
     public DateTime CollectedAtUtc { get; set; }
@@ -39,6 +40,8 @@ public class LiveOddsSyncResultDto
     public long? LeagueApiId { get; set; }
     public long? BetApiId { get; set; }
     public long? BookmakerApiId { get; set; }
+    public string? Bookmaker { get; set; }
+    public string? BookmakerIdentityType { get; set; }
     public int ProviderFixturesReceived { get; set; }
     public int ProviderBookmakersReceived { get; set; }
     public bool ProviderReturnedEmpty { get; set; }

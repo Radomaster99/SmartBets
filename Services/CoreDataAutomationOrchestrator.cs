@@ -165,7 +165,9 @@ public class CoreDataAutomationOrchestrator
             actions,
             cancellationToken);
 
-        if (hotFixtureKeys.Count > 0 || IsRecentlyUpdated(state.LastLiveStatusRunUtc, nowUtc, options.GetLiveStatusInterval()))
+        var liveStatusInterval = ResolveLiveStatusInterval(snapshot, options);
+
+        if (hotFixtureKeys.Count > 0 || IsRecentlyUpdated(state.LastLiveStatusRunUtc, nowUtc, liveStatusInterval))
         {
             snapshot = await BuildSnapshotAsync(currentTargets, options, cancellationToken);
         }
@@ -214,9 +216,7 @@ public class CoreDataAutomationOrchestrator
                 string.Join(" | ", actions));
         }
 
-        var nextDelay = snapshot.ShouldUseActiveMode
-            ? options.GetActiveInterval()
-            : options.GetIdleInterval();
+        var nextDelay = ResolveNextDelay(snapshot, options);
 
         return CoreDataAutomationCycleResult.Active(nextDelay, snapshot, actions);
     }
@@ -438,7 +438,8 @@ public class CoreDataAutomationOrchestrator
         CancellationToken cancellationToken)
     {
         var quotaMode = GetApiQuotaSnapshot().Mode;
-        var liveStatusDue = IsDue(state.LastLiveStatusRunUtc, nowUtc, options.GetLiveStatusInterval());
+        var liveStatusInterval = ResolveLiveStatusInterval(snapshot, options);
+        var liveStatusDue = IsDue(state.LastLiveStatusRunUtc, nowUtc, liveStatusInterval);
 
         var hotTargets = SelectDueTargets(
             snapshot.HotLeagueSeasons,
@@ -475,7 +476,7 @@ public class CoreDataAutomationOrchestrator
         _quotaManager.MarkStarted(
             CoreAutomationJobNames.FixturesRolling,
             desiredRequests,
-            $"liveStatusDue={liveStatusDue},hot={hotTargets.Count},baseline={baselineTargets.Count}");
+            $"liveStatusDue={liveStatusDue},liveStatusIntervalSeconds={(int)liveStatusInterval.TotalSeconds},hot={hotTargets.Count},baseline={baselineTargets.Count}");
 
         var actualRequests = 0;
         var processedItems = 0;
@@ -624,25 +625,10 @@ public class CoreDataAutomationOrchestrator
 
         var maxLiveLeagues = AdjustBatchSize(options.GetMaxLiveOddsLeaguesPerCycle(), quotaMode, 3, 1);
         var distinctLiveLeagueCount = snapshot.LiveLeagueSeasons.Select(x => x.LeagueApiId).Distinct().Count();
-        var liveOddsRequestsPerLeague = 1;
-
-        if (liveOddsDue && options.TrackLiveOddsPerBookmaker)
-        {
-            var trackedBookmakerCount = await _oddsLiveJobService.GetTrackedBookmakerCountAsync(options, cancellationToken);
-            if (trackedBookmakerCount == 0)
-            {
-                _quotaManager.MarkSkipped(CoreAutomationJobNames.OddsLive, "no_tracked_bookmakers");
-                return;
-            }
-
-            liveOddsRequestsPerLeague = Math.Min(
-                trackedBookmakerCount,
-                options.GetMaxLiveOddsBookmakersPerLeaguePerCycle());
-        }
 
         var desiredRequests = (betTypesDue ? 1 : 0) +
                               (liveOddsDue
-                                  ? Math.Min(distinctLiveLeagueCount, maxLiveLeagues) * liveOddsRequestsPerLeague
+                                  ? Math.Min(distinctLiveLeagueCount, maxLiveLeagues)
                                   : 0);
 
         if (desiredRequests == 0)
@@ -698,9 +684,6 @@ public class CoreDataAutomationOrchestrator
             var liveOddsResult = await _oddsLiveJobService.RunAsync(
                 orderedLiveLeagueSeasons,
                 remainingRequests,
-                options,
-                state,
-                nowUtc,
                 registerSync,
                 cancellationToken);
 
@@ -832,7 +815,8 @@ public class CoreDataAutomationOrchestrator
                 LeagueApiId = x.League.ApiLeagueId,
                 Season = x.Season,
                 Status = x.Status!,
-                KickoffAt = x.KickoffAt
+                KickoffAt = x.KickoffAt,
+                Elapsed = x.Elapsed
             })
             .ToListAsync(cancellationToken);
 
@@ -875,6 +859,10 @@ public class CoreDataAutomationOrchestrator
             .ThenBy(x => x.Season)
             .ToList();
 
+        var hasEndgameFixtures = fixtures.Any(x =>
+            liveStatuses.Contains(x.Status) &&
+            IsEndgameFixture(x, nowUtc, options));
+
         var oddsFixtures = await _dbContext.Fixtures
             .AsNoTracking()
             .Where(x =>
@@ -901,6 +889,7 @@ public class CoreDataAutomationOrchestrator
         {
             CurrentLeagueSeasonCount = currentTargets.Count,
             LiveFixturesCount = fixtures.Count(x => liveStatuses.Contains(x.Status)),
+            HasEndgameFixtures = hasEndgameFixtures,
             HotLeagueSeasons = hotLeagueSeasons,
             LiveLeagueSeasons = liveLeagueSeasons,
             OddsFixtures = oddsFixtures
@@ -1014,6 +1003,46 @@ public class CoreDataAutomationOrchestrator
         return lastRunUtc.HasValue && nowUtc - lastRunUtc.Value <= interval;
     }
 
+    private static TimeSpan ResolveLiveStatusInterval(
+        CoreDataAutomationSnapshot snapshot,
+        CoreDataAutomationOptions options)
+    {
+        return snapshot.HasEndgameFixtures
+            ? options.GetLiveStatusEndgameInterval()
+            : options.GetLiveStatusInterval();
+    }
+
+    private static TimeSpan ResolveNextDelay(
+        CoreDataAutomationSnapshot snapshot,
+        CoreDataAutomationOptions options)
+    {
+        if (!snapshot.ShouldUseActiveMode)
+            return options.GetIdleInterval();
+
+        var activeInterval = options.GetActiveInterval();
+        if (!snapshot.HasEndgameFixtures)
+            return activeInterval;
+
+        var endgameInterval = options.GetLiveStatusEndgameInterval();
+        return endgameInterval < activeInterval
+            ? endgameInterval
+            : activeInterval;
+    }
+
+    private static bool IsEndgameFixture(
+        CoreAutomationFixtureCandidate fixture,
+        DateTime nowUtc,
+        CoreDataAutomationOptions options)
+    {
+        var endgameElapsedMinutes = options.GetLiveStatusEndgameElapsedMinutes();
+        if (fixture.Elapsed.HasValue && fixture.Elapsed.Value >= endgameElapsedMinutes)
+            return true;
+
+        // Fallback when provider elapsed is temporarily missing but the kickoff age
+        // already places the fixture in the likely closing phase.
+        return nowUtc - fixture.KickoffAt >= TimeSpan.FromMinutes(endgameElapsedMinutes + 15);
+    }
+
     private static DateTime? GetLastSyncedAtUtc(
         IReadOnlyDictionary<string, DateTime> syncLookup,
         string entityType,
@@ -1041,6 +1070,7 @@ public class CoreDataAutomationOrchestrator
         public int Season { get; set; }
         public string Status { get; set; } = string.Empty;
         public DateTime KickoffAt { get; set; }
+        public int? Elapsed { get; set; }
     }
 }
 
@@ -1051,7 +1081,6 @@ public sealed class CoreDataAutomationWorkerState
     public DateTime? LastLiveBetTypesRunUtc { get; set; }
     public DateTime? LastLiveOddsRunUtc { get; set; }
     public DateTime? LastRepairRunUtc { get; set; }
-    public Dictionary<string, DateTime> LastLiveOddsRunByLeagueBookmakerKey { get; } = new();
 }
 
 public sealed class CoreDataAutomationCycleResult
@@ -1111,6 +1140,7 @@ public sealed class CoreDataAutomationSnapshot
 {
     public int CurrentLeagueSeasonCount { get; init; }
     public int LiveFixturesCount { get; init; }
+    public bool HasEndgameFixtures { get; init; }
     public IReadOnlyList<CoreLeagueSeasonTarget> HotLeagueSeasons { get; init; } = Array.Empty<CoreLeagueSeasonTarget>();
     public IReadOnlyList<CoreLeagueSeasonTarget> LiveLeagueSeasons { get; init; } = Array.Empty<CoreLeagueSeasonTarget>();
     public IReadOnlyList<CoreOddsFixtureTarget> OddsFixtures { get; init; } = Array.Empty<CoreOddsFixtureTarget>();

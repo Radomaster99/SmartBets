@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SmartBets.Data;
 using SmartBets.Dtos;
 using SmartBets.Entities;
@@ -17,21 +18,25 @@ public class FixtureLiveStatusSyncService
 
     private static readonly TimeSpan CatchUpLookbackWindow = TimeSpan.FromHours(6);
     private static readonly TimeSpan CatchUpLookaheadWindow = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan CatchUpMinResyncInterval = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan CatchUpMinResyncInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan EndgameCatchUpMinResyncInterval = TimeSpan.FromMinutes(1);
     private const int CatchUpBatchSize = 20;
 
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
     private readonly SyncStateService _syncStateService;
+    private readonly IOptionsMonitor<CoreDataAutomationOptions> _automationOptionsMonitor;
 
     public FixtureLiveStatusSyncService(
         AppDbContext dbContext,
         FootballApiService apiService,
-        SyncStateService syncStateService)
+        SyncStateService syncStateService,
+        IOptionsMonitor<CoreDataAutomationOptions> automationOptionsMonitor)
     {
         _dbContext = dbContext;
         _apiService = apiService;
         _syncStateService = syncStateService;
+        _automationOptionsMonitor = automationOptionsMonitor;
     }
 
     public async Task<LiveFixtureStatusSyncResultDto> SyncLiveFixturesAsync(
@@ -256,7 +261,8 @@ public class FixtureLiveStatusSyncService
     {
         var catchUpWindowStart = nowUtc.Add(-CatchUpLookbackWindow);
         var catchUpWindowEnd = nowUtc.Add(CatchUpLookaheadWindow);
-        var staleSyncThreshold = nowUtc.Add(-CatchUpMinResyncInterval);
+        var staleSyncThreshold = nowUtc.Add(-EndgameCatchUpMinResyncInterval);
+        var endgameElapsedMinutes = _automationOptionsMonitor.CurrentValue.GetLiveStatusEndgameElapsedMinutes();
 
         var query = _dbContext.Fixtures
             .AsNoTracking()
@@ -277,13 +283,18 @@ public class FixtureLiveStatusSyncService
             {
                 ApiFixtureId = x.ApiFixtureId,
                 KickoffAtUtc = x.KickoffAt,
-                LastLiveStatusSyncedAtUtc = x.LastLiveStatusSyncedAtUtc
+                LastLiveStatusSyncedAtUtc = x.LastLiveStatusSyncedAtUtc,
+                Status = x.Status!,
+                Elapsed = x.Elapsed
             })
             .ToListAsync(cancellationToken);
 
         return candidates
             .Where(x => !liveFixtureIds.Contains(x.ApiFixtureId))
-            .OrderBy(x => x.LastLiveStatusSyncedAtUtc ?? DateTime.MinValue)
+            .Where(x => !x.LastLiveStatusSyncedAtUtc.HasValue ||
+                        x.LastLiveStatusSyncedAtUtc <= nowUtc - ResolveCatchUpInterval(x, nowUtc, endgameElapsedMinutes))
+            .OrderByDescending(x => IsEndgameCandidate(x, nowUtc, endgameElapsedMinutes))
+            .ThenBy(x => x.LastLiveStatusSyncedAtUtc ?? DateTime.MinValue)
             .ThenByDescending(x => x.KickoffAtUtc)
             .Take(CatchUpBatchSize)
             .ToList();
@@ -333,5 +344,31 @@ public class FixtureLiveStatusSyncService
         public long ApiFixtureId { get; set; }
         public DateTime KickoffAtUtc { get; set; }
         public DateTime? LastLiveStatusSyncedAtUtc { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public int? Elapsed { get; set; }
+    }
+
+    private static TimeSpan ResolveCatchUpInterval(
+        CatchUpFixtureCandidate candidate,
+        DateTime nowUtc,
+        int endgameElapsedMinutes)
+    {
+        return IsEndgameCandidate(candidate, nowUtc, endgameElapsedMinutes)
+            ? EndgameCatchUpMinResyncInterval
+            : CatchUpMinResyncInterval;
+    }
+
+    private static bool IsEndgameCandidate(
+        CatchUpFixtureCandidate candidate,
+        DateTime nowUtc,
+        int endgameElapsedMinutes)
+    {
+        if (!LiveStatuses.Contains(candidate.Status, StringComparer.OrdinalIgnoreCase))
+            return false;
+
+        if (candidate.Elapsed.HasValue && candidate.Elapsed.Value >= endgameElapsedMinutes)
+            return true;
+
+        return nowUtc - candidate.KickoffAtUtc >= TimeSpan.FromMinutes(endgameElapsedMinutes + 15);
     }
 }

@@ -10,8 +10,6 @@ namespace SmartBets.Controllers;
 [Route("api/[controller]")]
 public class DebugController : ControllerBase
 {
-    private const string ProviderLiveFeedBookmakerName = "API-Football Live Feed";
-
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _footballApiService;
@@ -79,13 +77,7 @@ public class DebugController : ControllerBase
             bookmakerId,
             cancellationToken);
 
-        var requestedBookmakerName = bookmakerId.HasValue
-            ? await _dbContext.Bookmakers
-                .AsNoTracking()
-                .Where(x => x.ApiBookmakerId == bookmakerId.Value)
-                .Select(x => x.Name)
-                .FirstOrDefaultAsync(cancellationToken)
-            : null;
+        var directOddsBookmaker = await ResolveSingleSourceLiveBookmakerAsync(cancellationToken);
 
         var fixtureIds = response
             .Select(x => x.Fixture.Id)
@@ -111,6 +103,11 @@ public class DebugController : ControllerBase
             LeagueId = leagueId,
             BetId = betId,
             BookmakerId = bookmakerId,
+            DirectOddsResolvedBookmaker = new
+            {
+                directOddsBookmaker.ApiBookmakerId,
+                directOddsBookmaker.Name
+            },
             ProviderFixturesReceived = response.Count,
             ProviderFixtureApiIds = fixtureIds.Take(20).ToList(),
             ProviderBookmakersReceived = response.Sum(x => x.Bookmakers.Count > 0 ? x.Bookmakers.Count : x.Odds.Count > 0 ? 1 : 0),
@@ -146,10 +143,8 @@ public class DebugController : ControllerBase
                         {
                             new
                             {
-                                Id = 0L,
-                                Name = !string.IsNullOrWhiteSpace(requestedBookmakerName)
-                                    ? requestedBookmakerName
-                                    : ProviderLiveFeedBookmakerName,
+                                Id = directOddsBookmaker.ApiBookmakerId,
+                                Name = directOddsBookmaker.Name,
                                 Bets = x.Odds.Take(3).Select(z => new
                                 {
                                     z.Id,
@@ -168,6 +163,29 @@ public class DebugController : ControllerBase
                 }),
             LocalMatchingFixtures = localFixtures
         });
+    }
+
+    private async Task<ResolvedBookmakerIdentity> ResolveSingleSourceLiveBookmakerAsync(CancellationToken cancellationToken)
+    {
+        var bookmakers = await _dbContext.Bookmakers
+            .AsNoTracking()
+            .Select(x => new { x.ApiBookmakerId, x.Name })
+            .ToListAsync(cancellationToken);
+
+        var bookmaker = bookmakers
+            .Where(x => SingleSourceLiveBookmakerIdentity.IsSingleSourceName(x.Name))
+            .OrderByDescending(x => x.ApiBookmakerId > 0)
+            .ThenBy(x => x.ApiBookmakerId)
+            .FirstOrDefault();
+
+        if (bookmaker is not null)
+        {
+            return new ResolvedBookmakerIdentity(bookmaker.ApiBookmakerId, bookmaker.Name);
+        }
+
+        return new ResolvedBookmakerIdentity(
+            SingleSourceLiveBookmakerIdentity.SyntheticApiBookmakerId,
+            SingleSourceLiveBookmakerIdentity.Name);
     }
 
     [HttpGet("provider/live-odds/candidates")]
@@ -216,6 +234,8 @@ public class DebugController : ControllerBase
             .Take(maxLeagues)
             .ToList();
 
+        var resolvedLiveBookmaker = await ResolveSingleSourceLiveBookmakerAsync(cancellationToken);
+
         var scopedLocalFixtures = localLiveFixtures
             .Where(x => targetLeagueApiIds.Contains(x.LeagueApiId))
             .ToList();
@@ -249,18 +269,6 @@ public class DebugController : ControllerBase
 
         var localFixtureIds = scopedLocalFixtures.Select(x => x.Id).ToList();
 
-        var recommendedPrematchBookmakers = await _dbContext.PreMatchOdds
-            .AsNoTracking()
-            .Where(x => localFixtureIds.Contains(x.FixtureId) && x.Bookmaker.ApiBookmakerId > 0)
-            .GroupBy(x => new { x.FixtureId, x.Bookmaker.ApiBookmakerId })
-            .Select(x => new
-            {
-                x.Key.FixtureId,
-                x.Key.ApiBookmakerId,
-                LastCollectedAtUtc = x.Max(y => y.CollectedAt)
-            })
-            .ToListAsync(cancellationToken);
-
         var storedLiveBookmakers = await _dbContext.LiveOdds
             .AsNoTracking()
             .Where(x => localFixtureIds.Contains(x.FixtureId))
@@ -277,14 +285,6 @@ public class DebugController : ControllerBase
             .Select(x =>
             {
                 providerStatsByFixtureApiId.TryGetValue(x.ApiFixtureId, out var providerStats);
-
-                var prematchBookmakerApiIds = recommendedPrematchBookmakers
-                    .Where(y => y.FixtureId == x.Id)
-                    .OrderByDescending(y => y.LastCollectedAtUtc)
-                    .ThenBy(y => y.ApiBookmakerId)
-                    .Select(y => y.ApiBookmakerId)
-                    .Take(5)
-                    .ToList();
 
                 var storedLiveBookmakerApiIds = storedLiveBookmakers
                     .Where(y => y.FixtureId == x.Id && y.ApiBookmakerId > 0)
@@ -309,8 +309,7 @@ public class DebugController : ControllerBase
                     ProviderBookmakersReceived = providerStats?.ProviderBookmakersReceived ?? 0,
                     ProviderBetsReceived = providerStats?.ProviderBetsReceived ?? 0,
                     ProviderValuesReceived = providerStats?.ProviderValuesReceived ?? 0,
-                    RecommendedBookmakerApiIds = prematchBookmakerApiIds,
-                    StoredLiveRealBookmakerApiIds = storedLiveBookmakerApiIds,
+                    StoredLiveBookmakerApiIds = storedLiveBookmakerApiIds,
                     StoredLiveHasRealBookmakers = storedLiveBookmakerApiIds.Count > 0,
                     StoredLiveHasSyntheticRows = hasSyntheticStoredRows
                 };
@@ -326,6 +325,11 @@ public class DebugController : ControllerBase
             LocalLiveFixtures = localLiveFixtures.Count,
             ScopedLeaguesChecked = targetLeagueApiIds,
             ProviderFixturesReceived = providerFixturesReceived,
+            ResolvedLiveBookmaker = new
+            {
+                resolvedLiveBookmaker.ApiBookmakerId,
+                resolvedLiveBookmaker.Name
+            },
             Candidates = candidates
         });
     }
@@ -336,4 +340,6 @@ public class DebugController : ControllerBase
         public int ProviderBetsReceived { get; set; }
         public int ProviderValuesReceived { get; set; }
     }
+
+    private sealed record ResolvedBookmakerIdentity(long ApiBookmakerId, string Name);
 }

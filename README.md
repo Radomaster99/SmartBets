@@ -96,9 +96,10 @@ Stage 7 live odds + fixture batch sync:
 - live odds ingestion now accepts both provider response shapes seen in production:
   - legacy `bookmakers[].bets[].values`
   - direct `odds[].values`
-- when the provider omits bookmaker information, live odds are stored under the synthetic source bookmaker:
-  - `ApiBookmakerId = 0`
-  - `Bookmaker = API-Football Live Feed`
+- current production behavior indicates that direct live `odds[]` are effectively a single-source `Bet365` feed
+- `odds[].id` is the live bet/market id, not the bookmaker id
+- when the provider omits bookmaker information, the backend now materializes those live odds under `Bet365`
+- if the local bookmaker catalog cannot resolve `Bet365` yet, the temporary fallback stays `ApiBookmakerId = 0`
 - migration: `Migrations/20260331190852_Stage7LiveOddsAndFixtureBatchSync.cs`
 - SQL fallback: `sql/stage7_live_odds_and_fixture_batch_sync_manual.sql`
 
@@ -113,6 +114,8 @@ Stage 9 production hardening:
 - core automation suppresses expensive refreshes first when quota is tight
 - `POST /api/bookmakers/sync` now refreshes from the local odds cache instead of re-downloading the heavy odds catalog
 - new retention worker trims old `sync_errors`, `live_odds`, `pre_match_odds` and derived odds analytics rows
+- live odds for fixtures that are no longer live are now trimmed much earlier than the global hard cap
+- compact derived odds analytics can be retained longer than the bulky raw pre-match snapshots
 - new config sections:
   - `ApiFootballClient`
   - `DataRetention`

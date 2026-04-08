@@ -81,6 +81,8 @@ public class BookmakersController : ControllerBase
             result.RemoteCallsMade,
             result.PreMatchOddsReferences,
             result.LiveOddsReferences,
+            result.LiveOddsRowsReassigned,
+            result.SyntheticRowsDeleted,
             result.Processed,
             result.Inserted,
             result.Updated
@@ -92,7 +94,6 @@ public class BookmakersController : ControllerBase
     {
         var bookmakers = await _dbContext.Bookmakers
             .AsNoTracking()
-            .OrderBy(x => x.Name)
             .Select(x => new BookmakerDto
             {
                 Id = x.Id,
@@ -100,6 +101,19 @@ public class BookmakersController : ControllerBase
                 Name = x.Name
             })
             .ToListAsync(cancellationToken);
+
+        if (bookmakers.Any(x =>
+                x.ApiBookmakerId > SingleSourceLiveBookmakerIdentity.SyntheticApiBookmakerId &&
+                SingleSourceLiveBookmakerIdentity.IsSingleSourceName(x.Name)))
+        {
+            bookmakers = bookmakers
+                .Where(x => x.ApiBookmakerId != SingleSourceLiveBookmakerIdentity.SyntheticApiBookmakerId)
+                .ToList();
+        }
+
+        bookmakers = bookmakers
+            .OrderBy(x => x.Name)
+            .ToList();
 
         return Ok(bookmakers);
     }

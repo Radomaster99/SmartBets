@@ -7,11 +7,15 @@ public class DataRetentionOptions
     public int ErrorRetryMinutes { get; set; } = 30;
     public int SyncErrorsRetentionDays { get; set; } = 30;
     public int LiveOddsRetentionDays { get; set; } = 3;
-    public int PreMatchOddsRetentionDays { get; set; } = 30;
+    public int LiveOddsFinishedFixtureRetentionHours { get; set; } = 18;
+    public int PreMatchOddsRetentionDays { get; set; } = 14;
+    public int DerivedOddsAnalyticsRetentionDays { get; set; } = 180;
 
     public TimeSpan GetInterval() => TimeSpan.FromHours(Math.Clamp(IntervalHours, 1, 48));
     public TimeSpan GetErrorRetryInterval() => TimeSpan.FromMinutes(Math.Clamp(ErrorRetryMinutes, 5, 240));
     public int GetSyncErrorsRetentionDays() => Math.Clamp(SyncErrorsRetentionDays, 1, 365);
     public int GetLiveOddsRetentionDays() => Math.Clamp(LiveOddsRetentionDays, 1, 30);
+    public int GetLiveOddsFinishedFixtureRetentionHours() => Math.Clamp(LiveOddsFinishedFixtureRetentionHours, 1, 168);
     public int GetPreMatchOddsRetentionDays() => Math.Clamp(PreMatchOddsRetentionDays, 3, 365);
+    public int GetDerivedOddsAnalyticsRetentionDays() => Math.Clamp(DerivedOddsAnalyticsRetentionDays, 7, 3650);
 }

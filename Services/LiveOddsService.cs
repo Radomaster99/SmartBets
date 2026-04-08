@@ -1,7 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using SmartBets.Data;
 using SmartBets.Dtos;
 using SmartBets.Entities;
@@ -13,12 +12,8 @@ namespace SmartBets.Services;
 
 public class LiveOddsService
 {
-    private const long ProviderLiveFeedBookmakerApiId = 0;
-    private const string ProviderLiveFeedBookmakerName = "API-Football Live Feed";
-
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
-    private readonly IOptionsMonitor<CoreDataAutomationOptions> _coreAutomationOptionsMonitor;
     private readonly SyncStateService _syncStateService;
     private readonly IHubContext<LiveOddsHub> _hubContext;
     private readonly ILogger<LiveOddsService> _logger;
@@ -26,14 +21,12 @@ public class LiveOddsService
     public LiveOddsService(
         AppDbContext dbContext,
         FootballApiService apiService,
-        IOptionsMonitor<CoreDataAutomationOptions> coreAutomationOptionsMonitor,
         SyncStateService syncStateService,
         IHubContext<LiveOddsHub> hubContext,
         ILogger<LiveOddsService> logger)
     {
         _dbContext = dbContext;
         _apiService = apiService;
-        _coreAutomationOptionsMonitor = coreAutomationOptionsMonitor;
         _syncStateService = syncStateService;
         _hubContext = hubContext;
         _logger = logger;
@@ -107,7 +100,6 @@ public class LiveOddsService
         long? fixtureId = null,
         long? leagueId = null,
         long? betId = null,
-        long? bookmakerId = null,
         CancellationToken cancellationToken = default)
     {
         if (!fixtureId.HasValue && !leagueId.HasValue)
@@ -117,7 +109,7 @@ public class LiveOddsService
             fixtureId,
             leagueId,
             betId,
-            bookmakerId,
+            bookmakerId: null,
             cancellationToken);
 
         var result = new LiveOddsSyncResultDto
@@ -125,7 +117,6 @@ public class LiveOddsService
             FixtureApiId = fixtureId,
             LeagueApiId = leagueId,
             BetApiId = betId,
-            BookmakerApiId = bookmakerId,
             ExecutedAtUtc = DateTime.UtcNow
         };
 
@@ -141,7 +132,7 @@ public class LiveOddsService
                     fixtureId: null,
                     leagueId: storedFixture.LeagueApiId,
                     betId,
-                    bookmakerId,
+                    bookmakerId: null,
                     cancellationToken);
 
                 remoteRows = leagueRows
@@ -161,14 +152,6 @@ public class LiveOddsService
 
         if (remoteRows.Count == 0)
             return result;
-
-        var requestedBookmakerName = bookmakerId.HasValue
-            ? await _dbContext.Bookmakers
-                .AsNoTracking()
-                .Where(x => x.ApiBookmakerId == bookmakerId.Value)
-                .Select(x => x.Name)
-                .FirstOrDefaultAsync(cancellationToken)
-            : null;
 
         await EnsureLiveBetTypesForRemoteRowsAsync(remoteRows, result.ExecutedAtUtc, cancellationToken);
 
@@ -194,6 +177,7 @@ public class LiveOddsService
         var localFixtureIds = localFixtures.Select(x => x.FixtureId).ToList();
 
         var existingBookmakers = await _dbContext.Bookmakers.ToListAsync(cancellationToken);
+        var directOddsBookmaker = ResolveDirectOddsBookmakerIdentity(existingBookmakers);
         var bookmakersByApiId = existingBookmakers.ToDictionary(x => x.ApiBookmakerId);
 
         var latestSnapshots = await _dbContext.LiveOdds
@@ -224,6 +208,7 @@ public class LiveOddsService
         var touchedScopes = new HashSet<string>(StringComparer.Ordinal);
         var changedFixturesByApiId = new Dictionary<long, FixtureScope>();
         var missingFixtureApiIds = new HashSet<long>();
+        var resolvedBookmakers = new Dictionary<long, ResolvedBookmakerSyncTarget>();
         var collectedAtUtc = DateTime.UtcNow;
 
         foreach (var remoteFixture in remoteRows)
@@ -241,8 +226,16 @@ public class LiveOddsService
             result.FixturesMatched++;
             touchedScopes.Add(BuildLeagueScopeKey(fixture.LeagueApiId, fixture.Season));
 
-            foreach (var apiBookmaker in GetProviderBookmakers(remoteFixture, bookmakerId, requestedBookmakerName))
+            foreach (var apiBookmaker in GetProviderBookmakers(remoteFixture, directOddsBookmaker))
             {
+                if (!resolvedBookmakers.ContainsKey(apiBookmaker.Id))
+                {
+                    resolvedBookmakers[apiBookmaker.Id] = new ResolvedBookmakerSyncTarget(
+                        apiBookmaker.Id,
+                        apiBookmaker.Name.Trim(),
+                        apiBookmaker.Id > 0 ? "real" : "synthetic");
+                }
+
                 result.BookmakersProcessed++;
 
                 if (!bookmakersByApiId.TryGetValue(apiBookmaker.Id, out var bookmaker))
@@ -341,6 +334,14 @@ public class LiveOddsService
 
         result.MissingFixtureApiIdsSample = missingFixtureApiIds.ToList();
 
+        if (resolvedBookmakers.Count == 1)
+        {
+            var resolvedBookmaker = resolvedBookmakers.Values.First();
+            result.BookmakerApiId = resolvedBookmaker.ApiBookmakerId;
+            result.Bookmaker = resolvedBookmaker.Name;
+            result.BookmakerIdentityType = resolvedBookmaker.IdentityType;
+        }
+
         var syncStateItems = touchedScopes
             .Select(ParseLeagueSeasonScope)
             .Where(x => x is not null)
@@ -367,7 +368,6 @@ public class LiveOddsService
         long? fixtureId = null,
         long? apiFixtureId = null,
         long? betId = null,
-        long? bookmakerId = null,
         bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
@@ -390,7 +390,6 @@ public class LiveOddsService
             .AsNoTracking()
             .Where(x => x.FixtureId == fixture.FixtureId)
             .Where(x => !betId.HasValue || x.ApiBetId == betId.Value)
-            .Where(x => !bookmakerId.HasValue || x.Bookmaker.ApiBookmakerId == bookmakerId.Value)
             .OrderByDescending(x => x.CollectedAtUtc)
             .ThenBy(x => x.Bookmaker.Name)
             .ThenBy(x => x.BetName)
@@ -450,6 +449,7 @@ public class LiveOddsService
                 BookmakerId = group.Key.BookmakerId,
                 ApiBookmakerId = group.Key.ApiBookmakerId,
                 Bookmaker = group.Key.Bookmaker,
+                BookmakerIdentityType = group.Key.ApiBookmakerId > 0 ? "real" : "synthetic",
                 ApiBetId = group.Key.ApiBetId,
                 BetName = group.Key.BetName,
                 CollectedAtUtc = effectiveCollectedAtUtc,
@@ -483,26 +483,22 @@ public class LiveOddsService
         long? fixtureId = null,
         long? apiFixtureId = null,
         long? betId = null,
-        long? bookmakerId = null,
         bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var coreAutomationOptions = _coreAutomationOptionsMonitor.CurrentValue;
             var result = await GetLiveOddsAsync(
                 fixtureId,
                 apiFixtureId,
                 betId,
-                bookmakerId,
                 latestOnly,
                 cancellationToken);
 
             var shouldUpgradeSyntheticOnlyRows =
-                !bookmakerId.HasValue &&
-                coreAutomationOptions.TrackLiveOddsPerBookmaker &&
                 result.Count > 0 &&
-                result.All(x => x.ApiBookmakerId == ProviderLiveFeedBookmakerApiId);
+                result.All(x => x.ApiBookmakerId == SingleSourceLiveBookmakerIdentity.SyntheticApiBookmakerId) &&
+                result.Any(x => !SingleSourceLiveBookmakerIdentity.IsSingleSourceName(x.Bookmaker));
 
             if (result.Count > 0 && !shouldUpgradeSyntheticOnlyRows)
                 return result;
@@ -513,32 +509,11 @@ public class LiveOddsService
 
             try
             {
-                if (bookmakerId.HasValue)
-                {
-                    await SyncLiveOddsAsync(
-                        fixtureId: fixture.ApiFixtureId,
-                        leagueId: null,
-                        betId,
-                        bookmakerId,
-                        cancellationToken);
-                }
-                else if (coreAutomationOptions.TrackLiveOddsPerBookmaker)
-                {
-                    await SyncLiveOddsPerBookmakerCatchUpAsync(
-                        fixture,
-                        betId,
-                        coreAutomationOptions,
-                        cancellationToken);
-                }
-                else
-                {
-                    await SyncLiveOddsAsync(
-                        fixtureId: fixture.ApiFixtureId,
-                        leagueId: null,
-                        betId,
-                        bookmakerId: null,
-                        cancellationToken);
-                }
+                await SyncLiveOddsAsync(
+                    fixtureId: fixture.ApiFixtureId,
+                    leagueId: null,
+                    betId,
+                    cancellationToken);
             }
             catch (Exception ex)
             {
@@ -554,7 +529,6 @@ public class LiveOddsService
                 fixtureId,
                 apiFixtureId,
                 betId,
-                bookmakerId,
                 latestOnly,
                 cancellationToken);
 
@@ -687,7 +661,6 @@ public class LiveOddsService
             fixtureId,
             apiFixtureId,
             betId: null,
-            bookmakerId: null,
             latestOnly: latestOnly,
             cancellationToken: cancellationToken);
 
@@ -929,82 +902,6 @@ public class LiveOddsService
 
         return fixture.KickoffAt >= nowUtc.AddHours(-4) &&
                fixture.KickoffAt <= nowUtc.AddMinutes(15);
-    }
-
-    private async Task SyncLiveOddsPerBookmakerCatchUpAsync(
-        StoredFixtureScope fixture,
-        long? betId,
-        CoreDataAutomationOptions options,
-        CancellationToken cancellationToken)
-    {
-        var bookmakerApiIds = await GetCatchUpBookmakerApiIdsAsync(
-            fixture.FixtureId,
-            options,
-            cancellationToken);
-
-        foreach (var bookmakerApiId in bookmakerApiIds)
-        {
-            await SyncLiveOddsAsync(
-                fixtureId: fixture.ApiFixtureId,
-                leagueId: null,
-                betId: betId,
-                bookmakerId: bookmakerApiId,
-                cancellationToken: cancellationToken);
-        }
-    }
-
-    private async Task<IReadOnlyList<long>> GetCatchUpBookmakerApiIdsAsync(
-        long fixtureId,
-        CoreDataAutomationOptions options,
-        CancellationToken cancellationToken)
-    {
-        var maxBookmakers = options.GetMaxLiveOddsBookmakersPerLeaguePerCycle();
-
-        var preferredFromFixture = await _dbContext.PreMatchOdds
-            .AsNoTracking()
-            .Where(x => x.FixtureId == fixtureId && x.Bookmaker.ApiBookmakerId > 0)
-            .GroupBy(x => x.Bookmaker.ApiBookmakerId)
-            .Select(x => new
-            {
-                ApiBookmakerId = x.Key,
-                LastCollectedAtUtc = x.Max(y => y.CollectedAt)
-            })
-            .OrderByDescending(x => x.LastCollectedAtUtc)
-            .ThenBy(x => x.ApiBookmakerId)
-            .Select(x => x.ApiBookmakerId)
-            .Take(maxBookmakers)
-            .ToListAsync(cancellationToken);
-
-        var result = preferredFromFixture.ToList();
-        if (result.Count >= maxBookmakers)
-            return result;
-
-        var configured = options.GetNormalizedLiveOddsBookmakerApiIds();
-        if (configured.Count > 0)
-        {
-            foreach (var bookmakerApiId in configured)
-            {
-                if (result.Contains(bookmakerApiId))
-                    continue;
-
-                result.Add(bookmakerApiId);
-                if (result.Count >= maxBookmakers)
-                    return result;
-            }
-
-            return result;
-        }
-
-        var fallbackBookmakerApiIds = await _dbContext.Bookmakers
-            .AsNoTracking()
-            .Where(x => x.ApiBookmakerId > 0 && !result.Contains(x.ApiBookmakerId))
-            .OrderBy(x => x.Name)
-            .Select(x => x.ApiBookmakerId)
-            .Take(maxBookmakers - result.Count)
-            .ToListAsync(cancellationToken);
-
-        result.AddRange(fallbackBookmakerApiIds);
-        return result;
     }
 
     private static FixtureLiveOddsSummaryDto BuildFixtureOddsSummary(
@@ -1318,8 +1215,7 @@ public class LiveOddsService
 
     private static IReadOnlyList<ProviderBookmakerScope> GetProviderBookmakers(
         ApiFootballLiveOddsFixtureItem fixture,
-        long? requestedBookmakerId = null,
-        string? requestedBookmakerName = null)
+        ResolvedBookmakerIdentity directOddsBookmaker)
     {
         if (fixture.Bookmakers.Count > 0)
         {
@@ -1336,16 +1232,11 @@ public class LiveOddsService
 
         if (fixture.Odds.Count > 0)
         {
-            var bookmakerApiId = requestedBookmakerId ?? ProviderLiveFeedBookmakerApiId;
-            var bookmakerName = !string.IsNullOrWhiteSpace(requestedBookmakerName)
-                ? requestedBookmakerName.Trim()
-                : ProviderLiveFeedBookmakerName;
-
             return new[]
             {
                 new ProviderBookmakerScope(
-                    bookmakerApiId,
-                    bookmakerName,
+                    directOddsBookmaker.ApiBookmakerId,
+                    directOddsBookmaker.Name,
                     fixture.Odds,
                     GetFixtureStopped(fixture),
                     GetFixtureBlocked(fixture),
@@ -1354,6 +1245,25 @@ public class LiveOddsService
         }
 
         return Array.Empty<ProviderBookmakerScope>();
+    }
+
+    private static ResolvedBookmakerIdentity ResolveDirectOddsBookmakerIdentity(
+        IReadOnlyCollection<Bookmaker> existingBookmakers)
+    {
+        var bookmaker = existingBookmakers
+            .Where(x => SingleSourceLiveBookmakerIdentity.IsSingleSourceName(x.Name))
+            .OrderByDescending(x => x.ApiBookmakerId > 0)
+            .ThenBy(x => x.ApiBookmakerId)
+            .FirstOrDefault();
+
+        if (bookmaker is not null)
+        {
+            return new ResolvedBookmakerIdentity(bookmaker.ApiBookmakerId, bookmaker.Name);
+        }
+
+        return new ResolvedBookmakerIdentity(
+            SingleSourceLiveBookmakerIdentity.SyntheticApiBookmakerId,
+            SingleSourceLiveBookmakerIdentity.Name);
     }
 
     private static IReadOnlyList<ApiFootballLiveOddsBet> GetProviderBets(ApiFootballLiveOddsFixtureItem fixture)
@@ -1511,4 +1421,7 @@ public class LiveOddsService
         bool? Stopped,
         bool? Blocked,
         bool? Finished);
+
+    private sealed record ResolvedBookmakerIdentity(long ApiBookmakerId, string Name);
+    private sealed record ResolvedBookmakerSyncTarget(long ApiBookmakerId, string Name, string IdentityType);
 }

@@ -829,6 +829,7 @@ public class AppDbContext : DbContext
             entity.HasIndex(x => x.FixtureId);
             entity.HasIndex(x => x.BookmakerId);
             entity.HasIndex(x => x.ApiBetId);
+            entity.HasIndex(x => x.CollectedAtUtc);
             entity.HasIndex(x => new { x.FixtureId, x.BookmakerId, x.ApiBetId, x.OutcomeLabel, x.Line, x.CollectedAtUtc });
 
             entity.HasOne(x => x.Fixture)

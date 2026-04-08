@@ -617,14 +617,12 @@ public class FixturesController : ControllerBase
     public async Task<IActionResult> GetFixtureLiveOdds(
         long apiFixtureId,
         [FromQuery] long? betId,
-        [FromQuery] long? bookmakerId,
         [FromQuery] bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
         var result = await _liveOddsService.GetLiveOddsWithCatchUpAsync(
             apiFixtureId: apiFixtureId,
             betId: betId,
-            bookmakerId: bookmakerId,
             latestOnly: latestOnly,
             cancellationToken: cancellationToken);
 

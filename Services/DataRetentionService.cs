@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SmartBets.Data;
+using SmartBets.Enums;
 
 namespace SmartBets.Services;
 
@@ -24,10 +25,25 @@ public class DataRetentionService
 
         var syncErrorsCutoff = nowUtc.AddDays(-options.GetSyncErrorsRetentionDays());
         var liveOddsCutoff = nowUtc.AddDays(-options.GetLiveOddsRetentionDays());
+        var liveOddsFinishedFixtureCutoff = nowUtc.AddHours(-options.GetLiveOddsFinishedFixtureRetentionHours());
         var preMatchOddsCutoff = nowUtc.AddDays(-options.GetPreMatchOddsRetentionDays());
+        var derivedOddsCutoff = nowUtc.AddDays(-options.GetDerivedOddsAnalyticsRetentionDays());
+
+        var liveStatuses = FixtureStatusMapper
+            .GetStatusesForBucket(FixtureStateBucket.Live)
+            .ToList();
 
         var oldFixtureIdsQuery = _dbContext.Fixtures
             .Where(x => x.KickoffAt < preMatchOddsCutoff)
+            .Select(x => x.Id);
+
+        var oldDerivedFixtureIdsQuery = _dbContext.Fixtures
+            .Where(x => x.KickoffAt < derivedOddsCutoff)
+            .Select(x => x.Id);
+
+        var staleFinishedLiveFixtureIdsQuery = _dbContext.Fixtures
+            .Where(x => x.KickoffAt < liveOddsFinishedFixtureCutoff)
+            .Where(x => x.Status == null || !liveStatuses.Contains(x.Status))
             .Select(x => x.Id);
 
         var deletedSyncErrors = await _dbContext.SyncErrors
@@ -35,7 +51,9 @@ public class DataRetentionService
             .ExecuteDeleteAsync(cancellationToken);
 
         var deletedLiveOdds = await _dbContext.LiveOdds
-            .Where(x => x.CollectedAtUtc < liveOddsCutoff)
+            .Where(x =>
+                x.CollectedAtUtc < liveOddsCutoff ||
+                staleFinishedLiveFixtureIdsQuery.Contains(x.FixtureId))
             .ExecuteDeleteAsync(cancellationToken);
 
         var deletedPreMatchOdds = await _dbContext.PreMatchOdds
@@ -43,15 +61,15 @@ public class DataRetentionService
             .ExecuteDeleteAsync(cancellationToken);
 
         var deletedOddsOpenClose = await _dbContext.OddsOpenCloses
-            .Where(x => oldFixtureIdsQuery.Contains(x.FixtureId))
+            .Where(x => oldDerivedFixtureIdsQuery.Contains(x.FixtureId))
             .ExecuteDeleteAsync(cancellationToken);
 
         var deletedOddsMovements = await _dbContext.OddsMovements
-            .Where(x => oldFixtureIdsQuery.Contains(x.FixtureId))
+            .Where(x => oldDerivedFixtureIdsQuery.Contains(x.FixtureId))
             .ExecuteDeleteAsync(cancellationToken);
 
         var deletedMarketConsensuses = await _dbContext.MarketConsensuses
-            .Where(x => oldFixtureIdsQuery.Contains(x.FixtureId))
+            .Where(x => oldDerivedFixtureIdsQuery.Contains(x.FixtureId))
             .ExecuteDeleteAsync(cancellationToken);
 
         return new DataRetentionCleanupResult

@@ -105,7 +105,6 @@ public class OddsController : ControllerBase
         [FromQuery] long? fixtureId,
         [FromQuery] long? leagueId,
         [FromQuery] long? betId,
-        [FromQuery] long? bookmakerId,
         CancellationToken cancellationToken = default)
     {
         if (!fixtureId.HasValue && !leagueId.HasValue)
@@ -120,14 +119,10 @@ public class OddsController : ControllerBase
         if (betId.HasValue && betId.Value <= 0)
             return BadRequest("betId must be greater than 0.");
 
-        if (bookmakerId.HasValue && bookmakerId.Value <= 0)
-            return BadRequest("bookmakerId must be greater than 0.");
-
         var result = await _liveOddsService.SyncLiveOddsAsync(
             fixtureId,
             leagueId,
             betId,
-            bookmakerId,
             cancellationToken);
 
         return Ok(result);
@@ -138,7 +133,6 @@ public class OddsController : ControllerBase
         [FromQuery] long? fixtureId,
         [FromQuery] long? apiFixtureId,
         [FromQuery] long? betId,
-        [FromQuery] long? bookmakerId,
         [FromQuery] bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
@@ -149,7 +143,6 @@ public class OddsController : ControllerBase
             fixtureId,
             apiFixtureId,
             betId,
-            bookmakerId,
             latestOnly,
             cancellationToken);
 
