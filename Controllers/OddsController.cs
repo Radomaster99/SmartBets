@@ -156,10 +156,12 @@ public class OddsController : ControllerBase
         var result = apiFixtureId.HasValue
             ? await _theOddsLiveOddsService.SyncFixtureLiveOddsAsync(
                 apiFixtureId.Value,
+                force: false,
                 cancellationToken)
             : await _theOddsLiveOddsService.SyncLeagueLiveOddsAsync(
                 leagueId!.Value,
                 season!.Value,
+                force: false,
                 cancellationToken);
 
         return Ok(result);

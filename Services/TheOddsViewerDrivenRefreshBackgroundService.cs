@@ -47,31 +47,38 @@ public class TheOddsViewerDrivenRefreshBackgroundService : BackgroundService
 
                     var maxFixturesPerCycle = options.GetMaxViewerFixturesPerCycle();
                     var activeFixtureIds = _viewerActivityService.GetActiveFixtureIds(maxFixturesPerCycle);
-                    var priorityFixtureIds = await GetPriorityKeepaliveFixtureIdsAsync(
-                        dbContext,
-                        activeFixtureIds,
-                        options.GetPriorityKeepaliveCount(),
-                        stoppingToken);
-
-                    var targetFixtureIds = activeFixtureIds
-                        .Concat(priorityFixtureIds)
-                        .Distinct()
-                        .Take(maxFixturesPerCycle)
-                        .ToList();
-
-                    if (targetFixtureIds.Count > 0)
+                    if (activeFixtureIds.Count > 0)
                     {
-                        var result = await theOddsLiveOddsService.SyncFixturesLiveOddsAsync(targetFixtureIds, stoppingToken);
+                        var priorityFixtureIds = await GetPriorityKeepaliveFixtureIdsAsync(
+                            dbContext,
+                            activeFixtureIds,
+                            options.GetPriorityKeepaliveCount(),
+                            stoppingToken);
 
-                        _logger.LogInformation(
-                            "The Odds viewer-driven refresh completed. ActiveFixtures={ActiveFixtures}, PriorityFixtures={PriorityFixtures}, TargetFixtures={TargetFixtures}, RequestsUsed={RequestsUsed}, FixturesMatched={FixturesMatched}, SnapshotsInserted={SnapshotsInserted}, SnapshotsSkippedUnchanged={SnapshotsSkippedUnchanged}",
-                            activeFixtureIds.Count,
-                            priorityFixtureIds.Count,
-                            targetFixtureIds.Count,
-                            result.RequestsUsed,
-                            result.FixturesMatched,
-                            result.SnapshotsInserted,
-                            result.SnapshotsSkippedUnchanged);
+                        var targetFixtureIds = activeFixtureIds
+                            .Concat(priorityFixtureIds)
+                            .Distinct()
+                            .Take(maxFixturesPerCycle)
+                            .ToList();
+
+                        if (targetFixtureIds.Count > 0)
+                        {
+                            var result = await theOddsLiveOddsService.SyncFixturesLiveOddsAsync(
+                                targetFixtureIds,
+                                force: false,
+                                cancellationToken: stoppingToken);
+
+                            _logger.LogInformation(
+                                "The Odds viewer-driven refresh completed. ActiveFixtures={ActiveFixtures}, PriorityFixtures={PriorityFixtures}, TargetFixtures={TargetFixtures}, RequestsUsed={RequestsUsed}, FixturesMatched={FixturesMatched}, SnapshotsInserted={SnapshotsInserted}, SnapshotsSkippedUnchanged={SnapshotsSkippedUnchanged}, LeaguesSkippedRecentlySynced={LeaguesSkippedRecentlySynced}",
+                                activeFixtureIds.Count,
+                                priorityFixtureIds.Count,
+                                targetFixtureIds.Count,
+                                result.RequestsUsed,
+                                result.FixturesMatched,
+                                result.SnapshotsInserted,
+                                result.SnapshotsSkippedUnchanged,
+                                result.LeaguesSkippedRecentlySynced);
+                        }
                     }
                 }
             }

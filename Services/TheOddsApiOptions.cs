@@ -12,10 +12,12 @@ public class TheOddsApiOptions
     public int FreshnessSeconds { get; set; } = 45;
     public int MatchToleranceMinutes { get; set; } = 360;
     public bool EnableViewerDrivenRefresh { get; set; } = true;
+    public bool EnableReadDrivenCatchUp { get; set; } = false;
     public int ViewerHeartbeatTtlSeconds { get; set; } = 60;
-    public int ViewerRefreshIntervalSeconds { get; set; } = 60;
-    public int MaxViewerFixturesPerCycle { get; set; } = 20;
-    public int PriorityKeepaliveCount { get; set; } = 5;
+    public int ViewerRefreshIntervalSeconds { get; set; } = 180;
+    public int MaxViewerFixturesPerCycle { get; set; } = 8;
+    public int PriorityKeepaliveCount { get; set; } = 0;
+    public int MinLeagueSyncIntervalSeconds { get; set; } = 600;
     public Dictionary<long, string> LeagueSportKeys { get; set; } = new();
 
     public bool IsConfigured() =>
@@ -62,13 +64,19 @@ public class TheOddsApiOptions
         TimeSpan.FromSeconds(Math.Clamp(ViewerHeartbeatTtlSeconds, 30, 300));
 
     public TimeSpan GetViewerRefreshInterval() =>
-        TimeSpan.FromSeconds(Math.Clamp(ViewerRefreshIntervalSeconds, 10, 120));
+        TimeSpan.FromSeconds(Math.Clamp(ViewerRefreshIntervalSeconds, 30, 300));
 
     public int GetMaxViewerFixturesPerCycle() =>
         Math.Clamp(MaxViewerFixturesPerCycle, 1, 100);
 
     public int GetPriorityKeepaliveCount() =>
         Math.Clamp(PriorityKeepaliveCount, 0, 20);
+
+    public TimeSpan GetMinLeagueSyncInterval() =>
+        TimeSpan.FromSeconds(Math.Clamp(MinLeagueSyncIntervalSeconds, 30, 1800));
+
+    public bool ShouldAllowReadDrivenCatchUp() =>
+        EnableReadDrivenCatchUp || !EnableViewerDrivenRefresh;
 
     public bool TryGetSportKey(long leagueApiId, out string sportKey)
     {

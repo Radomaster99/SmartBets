@@ -2727,10 +2727,12 @@ Fields:
 - `FreshnessSeconds`
 - `MatchToleranceMinutes`
 - `EnableViewerDrivenRefresh`
+- `EnableReadDrivenCatchUp`
 - `ViewerHeartbeatTtlSeconds`
 - `ViewerRefreshIntervalSeconds`
 - `MaxViewerFixturesPerCycle`
 - `PriorityKeepaliveCount`
+- `MinLeagueSyncIntervalSeconds`
 - `LeagueSportKeys`
 
 Important:
@@ -2738,6 +2740,10 @@ Important:
 - if a `leagueId -> sport_key` override is configured there, it wins immediately
 - if no override is configured, the backend now tries to resolve and persist the mapping automatically
 - Render env vars are no longer required per league for the normal path
+- the default config is now intentionally conservative for test quotas
+- by default read endpoints do not trigger The Odds provider catch-up when viewer-driven refresh is enabled
+- by default the background worker also respects a per-league sync cooldown through `MinLeagueSyncIntervalSeconds`
+- by default `PriorityKeepaliveCount = 0`, so no unseen fixtures are refreshed just because they are live
 
 ### 32.2 New Table
 
@@ -2786,6 +2792,78 @@ Interpretation notes:
 - `200 OK` does not necessarily mean rows were inserted
 - if `SportKey` is present but `FixturesMatched = 0`, the sport-key mapping worked and the remaining issue is fixture matching against the provider event window or provider team naming
 - if `SkippedReason = provider_sync_failed`, `ProviderError` now contains the useful provider/backend error text instead of returning a generic `500`
+- if `SkippedReason = recently_synced`, the backend intentionally skipped a duplicate provider call because the same league-season was refreshed too recently
+
+### 32.3.1 Admin Cache-Or-Refresh Endpoints
+
+These endpoints are intended for admin panels and manual operator actions.
+
+They are different from the normal frontend read flow:
+- they first try to serve cached The Odds rows
+- if cache is missing, they can trigger a remote refresh
+- they also support `force=true` for a deliberate admin override
+
+`POST /api/admin/odds/live/the-odds/refresh-fixture`
+
+Query parameters:
+- `apiFixtureId` - required
+- `force` - optional, default `false`
+- `latestOnly` - optional, default `true`
+
+Behavior:
+- if `force=false` and cached The Odds live odds already exist for the fixture, the endpoint returns cached rows without a new provider call
+- if cache is missing, it triggers a remote refresh for the fixture's league-season and then returns the latest cached rows
+- if `force=true`, it always attempts a remote refresh, even if cache already exists or the league-season was recently synced
+
+Response:
+- `ApiFixtureId`
+- `KickoffAtUtc`
+- `Status`
+- `Elapsed`
+- `HomeTeamName`
+- `AwayTeamName`
+- `Forced`
+- `ServedFromCache`
+- `RefreshedRemotely`
+- `HasCachedOdds`
+- `MarketsReturned`
+- `Sync`
+- `Items`
+
+`POST /api/admin/odds/live/the-odds/refresh-league`
+
+Query parameters:
+- `leagueId` - required
+- `season` - required
+- `force` - optional, default `false`
+
+Behavior:
+- scopes itself only to the local live fixtures for that league-season
+- if all live fixtures already have cached The Odds summaries and `force=false`, it returns cache-only data
+- if some live fixtures are missing cached odds, it triggers a remote refresh for the league-season and then returns the updated cache snapshot
+- if `force=true`, it always attempts a remote refresh for the league-season
+
+Response:
+- `LeagueApiId`
+- `Season`
+- `Forced`
+- `ServedFromCache`
+- `RefreshedRemotely`
+- `LiveFixturesInScope`
+- `FixturesWithCachedOdds`
+- `FixturesMissingCachedOdds`
+- `Sync`
+- `Items`
+
+Each item in `Items` contains:
+- `ApiFixtureId`
+- `KickoffAtUtc`
+- `Status`
+- `Elapsed`
+- `HomeTeamName`
+- `AwayTeamName`
+- `HasCachedOdds`
+- `Summary`
 
 ### 32.4 Viewer-Driven Live Odds Refresh
 
@@ -2809,15 +2887,22 @@ Behavior:
 - the backend refresh worker then polls The Odds API only for:
   - active viewed fixtures
   - plus a small priority shortlist controlled by `PriorityKeepaliveCount`
+- if there are no active viewers, the background worker does not refresh The Odds live odds at all
+- even with active viewers, each league-season is throttled by `MinLeagueSyncIntervalSeconds`
 
 Recommended frontend behavior:
 - send heartbeats every `25..30` seconds
 - send only visible live fixtures
 - stop heartbeats when the tab is hidden
-- the backend-side The Odds API refresh loop should usually run every `60` seconds by default
+- the backend-side The Odds API refresh loop now runs more conservatively for testing, usually every `180` seconds by default
 - more frequent heartbeats do not imply more frequent provider calls; they only keep viewer interest fresh in the backend registry
 - this heartbeat affects only live odds refresh priority
 - it does not replace or modify the API-Football live status layer
+
+Testing note:
+- the default test-friendly settings now reduce quota burn aggressively
+- visible fixtures are still the only trigger the frontend needs to send
+- the backend can intentionally return cached The Odds rows for a while before the next provider refresh is allowed
 
 Response:
 - `ReceivedFixtureIds`
@@ -2859,6 +2944,9 @@ Frontend contract notes:
   - `SourceProvider + ExternalBookmakerKey + ExternalMarketKey`
 - if `SourceProvider = api-football`, continue using the existing local/API bookmaker ids as before
 - the live status / elapsed / score UI should continue to come from API-Football-backed fixture endpoints, not from The Odds API
+- with the current conservative test defaults, these read endpoints are cache-first for The Odds
+- frontend reads alone should not be relied on to trigger a fresh The Odds provider request
+- the intended refresh trigger is the viewer heartbeat plus the backend viewer-driven worker
 
 Recommended frontend read flow:
 - live fixture list:

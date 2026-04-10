@@ -89,6 +89,7 @@ public class TheOddsLiveOddsService
     public async Task<TheOddsLiveOddsSyncResultDto> SyncLeagueLiveOddsAsync(
         long leagueApiId,
         int season,
+        bool force = false,
         CancellationToken cancellationToken = default)
     {
         var options = _optionsMonitor.CurrentValue;
@@ -140,6 +141,13 @@ public class TheOddsLiveOddsService
             if (fixtures.Count == 0)
             {
                 result.SkippedReason = "no_live_fixtures_in_scope";
+                return result;
+            }
+
+            if (!force &&
+                await HasRecentLeagueSyncAsync(leagueApiId, season, options.GetMinLeagueSyncInterval(), cancellationToken))
+            {
+                result.SkippedReason = "recently_synced";
                 return result;
             }
 
@@ -202,6 +210,7 @@ public class TheOddsLiveOddsService
 
     public async Task<TheOddsLiveOddsBatchSyncResult> SyncFixturesLiveOddsAsync(
         IReadOnlyCollection<long> apiFixtureIds,
+        bool force = false,
         CancellationToken cancellationToken = default)
     {
         var options = _optionsMonitor.CurrentValue;
@@ -278,6 +287,17 @@ public class TheOddsLiveOddsService
 
             foreach (var group in groups)
             {
+                if (!force &&
+                    await HasRecentLeagueSyncAsync(
+                        group.LeagueApiId,
+                        group.Season,
+                        options.GetMinLeagueSyncInterval(),
+                        cancellationToken))
+                {
+                    result.LeaguesSkippedRecentlySynced++;
+                    continue;
+                }
+
                 options.TryGetSportKey(group.LeagueApiId, out var configuredSportKey);
                 var resolution = await _sportKeyResolver.ResolveAsync(
                     group.LeagueApiId,
@@ -332,6 +352,7 @@ public class TheOddsLiveOddsService
 
     public async Task<TheOddsLiveOddsSyncResultDto> SyncFixtureLiveOddsAsync(
         long apiFixtureId,
+        bool force = false,
         CancellationToken cancellationToken = default)
     {
         var fixture = await ResolveFixtureAsync(null, apiFixtureId, cancellationToken);
@@ -347,7 +368,7 @@ public class TheOddsLiveOddsService
             };
         }
 
-        var result = await SyncLeagueLiveOddsAsync(fixture.LeagueApiId, fixture.Season, cancellationToken);
+        var result = await SyncLeagueLiveOddsAsync(fixture.LeagueApiId, fixture.Season, force, cancellationToken);
         result.ApiFixtureId = fixture.ApiFixtureId;
         return result;
     }
@@ -363,6 +384,9 @@ public class TheOddsLiveOddsService
             return Array.Empty<LiveOddsMarketDto>();
 
         var stored = await GetStoredLiveOddsAsync(fixture, latestOnly, cancellationToken);
+        if (!_optionsMonitor.CurrentValue.ShouldAllowReadDrivenCatchUp())
+            return stored;
+
         if (stored.Count > 0 && !ShouldAttemptRefresh(fixture, stored, _optionsMonitor.CurrentValue.GetFreshnessInterval()))
             return stored;
 
@@ -371,7 +395,7 @@ public class TheOddsLiveOddsService
 
         try
         {
-            await SyncLeagueLiveOddsAsync(fixture.LeagueApiId, fixture.Season, cancellationToken);
+            await SyncLeagueLiveOddsAsync(fixture.LeagueApiId, fixture.Season, force: false, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -753,6 +777,25 @@ public class TheOddsLiveOddsService
         return await query.FirstOrDefaultAsync(cancellationToken);
     }
 
+    private async Task<bool> HasRecentLeagueSyncAsync(
+        long leagueApiId,
+        int season,
+        TimeSpan minInterval,
+        CancellationToken cancellationToken)
+    {
+        var lastSyncedAtUtc = await _dbContext.SyncStates
+            .AsNoTracking()
+            .Where(x =>
+                x.EntityType == "the_odds_live_odds" &&
+                x.LeagueApiId == leagueApiId &&
+                x.Season == season)
+            .Select(x => (DateTime?)x.LastSyncedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return lastSyncedAtUtc.HasValue &&
+               DateTime.UtcNow - lastSyncedAtUtc.Value < minInterval;
+    }
+
     private static FixtureScope? MatchFixture(
         TheOddsApiOddsItem providerEvent,
         IReadOnlyList<FixtureScope> fixtures,
@@ -1021,6 +1064,7 @@ public class TheOddsLiveOddsBatchSyncResult
     public int FixturesRequested { get; set; }
     public int LiveFixturesResolved { get; set; }
     public int LeaguesRequested { get; set; }
+    public int LeaguesSkippedRecentlySynced { get; set; }
     public int LeaguesMissingSportKeyMapping { get; set; }
     public int LeaguesUnresolvedSportKey { get; set; }
     public int RequestsUsed { get; set; }
