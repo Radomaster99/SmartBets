@@ -6,6 +6,9 @@ public class TheOddsLiveOddsSyncResultDto
     public long? LeagueApiId { get; set; }
     public int? Season { get; set; }
     public string? SportKey { get; set; }
+    public string? SportKeySource { get; set; }
+    public int SportKeyConfidence { get; set; }
+    public bool SportKeyVerified { get; set; }
     public string SourceProvider { get; set; } = "the-odds-api";
     public string Regions { get; set; } = string.Empty;
     public string MarketKey { get; set; } = string.Empty;

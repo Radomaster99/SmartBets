@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<LiveBetType> LiveBetTypes => Set<LiveBetType>();
     public DbSet<LiveOdd> LiveOdds => Set<LiveOdd>();
     public DbSet<TheOddsLiveOdd> TheOddsLiveOdds => Set<TheOddsLiveOdd>();
+    public DbSet<TheOddsLeagueMapping> TheOddsLeagueMappings => Set<TheOddsLeagueMapping>();
     public DbSet<PreMatchOdd> PreMatchOdds => Set<PreMatchOdd>();
     public DbSet<OddsOpenClose> OddsOpenCloses => Set<OddsOpenClose>();
     public DbSet<OddsMovement> OddsMovements => Set<OddsMovement>();
@@ -917,6 +918,65 @@ public class AppDbContext : DbContext
                 .WithMany(x => x.TheOddsLiveOdds)
                 .HasForeignKey(x => x.FixtureId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TheOddsLeagueMapping>(entity =>
+        {
+            entity.ToTable("the_odds_league_mappings");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.ApiFootballLeagueId)
+                .HasColumnName("api_football_league_id");
+
+            entity.Property(x => x.LeagueName)
+                .HasColumnName("league_name")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.CountryName)
+                .HasColumnName("country_name")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.TheOddsSportKey)
+                .HasColumnName("the_odds_sport_key")
+                .HasMaxLength(100);
+
+            entity.Property(x => x.ResolutionSource)
+                .HasColumnName("resolution_source")
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(x => x.Confidence)
+                .HasColumnName("confidence");
+
+            entity.Property(x => x.IsVerified)
+                .HasColumnName("is_verified");
+
+            entity.Property(x => x.Notes)
+                .HasColumnName("notes")
+                .HasMaxLength(500);
+
+            entity.Property(x => x.CreatedAtUtc)
+                .HasColumnName("created_at_utc");
+
+            entity.Property(x => x.UpdatedAtUtc)
+                .HasColumnName("updated_at_utc");
+
+            entity.Property(x => x.LastResolvedAtUtc)
+                .HasColumnName("last_resolved_at_utc");
+
+            entity.Property(x => x.LastUsedAtUtc)
+                .HasColumnName("last_used_at_utc");
+
+            entity.HasIndex(x => x.ApiFootballLeagueId)
+                .IsUnique();
+
+            entity.HasIndex(x => x.TheOddsSportKey);
+            entity.HasIndex(x => x.ResolutionSource);
         });
 
         modelBuilder.Entity<PreMatchOdd>(entity =>

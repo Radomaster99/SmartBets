@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using SmartBets.Data;
+using SmartBets.Entities;
 using SmartBets.Models.TheOddsApi;
 
 namespace SmartBets.Services;
@@ -15,6 +16,8 @@ public class TheOddsSportKeyResolverService
     private static readonly TimeSpan SportsCacheDuration = TimeSpan.FromHours(6);
     private static readonly TimeSpan ResolvedCacheDuration = TimeSpan.FromHours(12);
     private static readonly TimeSpan UnresolvedCacheDuration = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan UnresolvedRecheckInterval = TimeSpan.FromHours(24);
+    private static readonly TimeSpan LastUsedUpdateInterval = TimeSpan.FromMinutes(15);
 
     private static readonly Dictionary<string, string> KnownLeagueAliases = new(StringComparer.Ordinal)
     {
@@ -94,27 +97,6 @@ public class TheOddsSportKeyResolverService
         TimeSpan matchTolerance,
         CancellationToken cancellationToken = default)
     {
-        if (!string.IsNullOrWhiteSpace(configuredSportKey))
-        {
-            return new TheOddsSportKeyResolutionResult
-            {
-                SportKey = configuredSportKey.Trim(),
-                Source = "configured_override"
-            };
-        }
-
-        var cacheKey = BuildCacheKey(leagueApiId, season);
-        if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedSportKey))
-        {
-            return new TheOddsSportKeyResolutionResult
-            {
-                SportKey = string.Equals(cachedSportKey, UnresolvedCacheValue, StringComparison.Ordinal)
-                    ? null
-                    : cachedSportKey,
-                Source = "memory_cache"
-            };
-        }
-
         var league = await _dbContext.Leagues
             .AsNoTracking()
             .Include(x => x.Country)
@@ -129,9 +111,81 @@ public class TheOddsSportKeyResolverService
             .FirstOrDefaultAsync(cancellationToken);
 
         if (league is null)
-        {
-            _memoryCache.Set(cacheKey, UnresolvedCacheValue, UnresolvedCacheDuration);
             return new TheOddsSportKeyResolutionResult();
+
+        if (!string.IsNullOrWhiteSpace(configuredSportKey))
+        {
+            var resolvedSportKey = configuredSportKey.Trim();
+            await UpsertMappingAsync(
+                league,
+                resolvedSportKey,
+                "configured_override",
+                100,
+                isVerified: true,
+                notes: "Configured through TheOddsApi:LeagueSportKeys override.",
+                touchLastUsed: true,
+                cancellationToken);
+
+            CacheResolved(leagueApiId, resolvedSportKey);
+
+            return new TheOddsSportKeyResolutionResult
+            {
+                SportKey = resolvedSportKey,
+                Source = "configured_override",
+                Confidence = 100
+            };
+        }
+
+        var cacheKey = BuildCacheKey(leagueApiId);
+        if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedSportKey))
+        {
+            return new TheOddsSportKeyResolutionResult
+            {
+                SportKey = string.Equals(cachedSportKey, UnresolvedCacheValue, StringComparison.Ordinal)
+                    ? null
+                    : cachedSportKey,
+                Source = "memory_cache"
+            };
+        }
+
+        var existingMapping = await _dbContext.TheOddsLeagueMappings
+            .FirstOrDefaultAsync(x => x.ApiFootballLeagueId == leagueApiId, cancellationToken);
+
+        if (existingMapping is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(existingMapping.TheOddsSportKey))
+            {
+                if (!existingMapping.LastUsedAtUtc.HasValue ||
+                    DateTime.UtcNow - existingMapping.LastUsedAtUtc.Value >= LastUsedUpdateInterval)
+                {
+                    existingMapping.LastUsedAtUtc = DateTime.UtcNow;
+                    existingMapping.UpdatedAtUtc = DateTime.UtcNow;
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                }
+
+                CacheResolved(leagueApiId, existingMapping.TheOddsSportKey);
+
+                return new TheOddsSportKeyResolutionResult
+                {
+                    SportKey = existingMapping.TheOddsSportKey,
+                    Source = "db_mapping",
+                    Confidence = existingMapping.Confidence,
+                    IsVerified = existingMapping.IsVerified
+                };
+            }
+
+            if (existingMapping.LastResolvedAtUtc.HasValue &&
+                DateTime.UtcNow - existingMapping.LastResolvedAtUtc.Value < UnresolvedRecheckInterval)
+            {
+                CacheUnresolved(leagueApiId);
+
+                return new TheOddsSportKeyResolutionResult
+                {
+                    Source = "db_unresolved",
+                    Confidence = existingMapping.Confidence,
+                    IsVerified = existingMapping.IsVerified
+                };
+            }
         }
 
         var sportsLoad = await GetActiveSoccerSportsAsync(cancellationToken);
@@ -141,26 +195,28 @@ public class TheOddsSportKeyResolverService
         var aliasMatch = TryResolveFromKnownAliases(league, sports);
         if (!string.IsNullOrWhiteSpace(aliasMatch))
         {
-            _memoryCache.Set(cacheKey, aliasMatch, ResolvedCacheDuration);
+            await UpsertMappingAsync(
+                league,
+                aliasMatch,
+                "known_alias",
+                100,
+                isVerified: false,
+                notes: "Resolved from built-in known alias map.",
+                touchLastUsed: true,
+                cancellationToken);
+
+            CacheResolved(leagueApiId, aliasMatch);
 
             return new TheOddsSportKeyResolutionResult
             {
                 SportKey = aliasMatch,
                 RequestsUsed = requestsUsed,
-                Source = "known_alias"
+                Source = "known_alias",
+                Confidence = 100
             };
         }
 
-        var candidates = sports
-            .Select(x => new SportCandidateScore
-            {
-                Sport = x,
-                Score = ScoreCandidate(league, x)
-            })
-            .Where(x => x.Score > 0)
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Sport.Key, StringComparer.Ordinal)
-            .ToList();
+        var candidates = BuildCandidates(league, sports);
 
         if (candidates.Count > 0)
         {
@@ -168,7 +224,17 @@ public class TheOddsSportKeyResolverService
             var secondScore = candidates.Count > 1 ? candidates[1].Score : int.MinValue;
             if (best.Score >= 100 && best.Score - secondScore >= 15)
             {
-                _memoryCache.Set(cacheKey, best.Sport.Key, ResolvedCacheDuration);
+                await UpsertMappingAsync(
+                    league,
+                    best.Sport.Key,
+                    "heuristic",
+                    Math.Min(best.Score, 100),
+                    isVerified: false,
+                    notes: $"Resolved heuristically from league/country names. Score={best.Score}.",
+                    touchLastUsed: true,
+                    cancellationToken);
+
+                CacheResolved(leagueApiId, best.Sport.Key);
 
                 _logger.LogInformation(
                     "Resolved The Odds sport key heuristically for league {LeagueApiId}/{Season}: {SportKey} (score {Score})",
@@ -181,21 +247,19 @@ public class TheOddsSportKeyResolverService
                 {
                     SportKey = best.Sport.Key,
                     RequestsUsed = requestsUsed,
-                    Source = "heuristic"
+                    Source = "heuristic",
+                    Confidence = Math.Min(best.Score, 100)
                 };
             }
         }
 
         if (fixtures is not null && fixtures.Count > 0 && candidates.Count > 0)
         {
-            var discoveryCandidates = candidates
-                .Take(3)
-                .ToList();
-
+            var discoveryCandidates = candidates.Take(3).ToList();
             var commenceTimeFromUtc = fixtures.Min(x => x.KickoffAtUtc).Subtract(matchTolerance);
             var commenceTimeToUtc = fixtures.Max(x => x.KickoffAtUtc).Add(matchTolerance);
 
-            var bestMatch = default(SportCandidateScore);
+            SportCandidateScore? bestMatch = null;
             var bestMatchCount = 0;
 
             foreach (var candidate in discoveryCandidates)
@@ -220,7 +284,19 @@ public class TheOddsSportKeyResolverService
 
             if (bestMatch is not null)
             {
-                _memoryCache.Set(cacheKey, bestMatch.Sport.Key, ResolvedCacheDuration);
+                var discoveryConfidence = Math.Min(bestMatch.Score + (bestMatchCount * 5), 100);
+
+                await UpsertMappingAsync(
+                    league,
+                    bestMatch.Sport.Key,
+                    "provider_discovery",
+                    discoveryConfidence,
+                    isVerified: false,
+                    notes: $"Resolved through provider-assisted fixture matching. Matches={bestMatchCount}.",
+                    touchLastUsed: true,
+                    cancellationToken);
+
+                CacheResolved(leagueApiId, bestMatch.Sport.Key);
 
                 _logger.LogInformation(
                     "Resolved The Odds sport key via provider-assisted discovery for league {LeagueApiId}/{Season}: {SportKey} (matches {MatchCount})",
@@ -233,18 +309,68 @@ public class TheOddsSportKeyResolverService
                 {
                     SportKey = bestMatch.Sport.Key,
                     RequestsUsed = requestsUsed,
-                    Source = "provider_discovery"
+                    Source = "provider_discovery",
+                    Confidence = discoveryConfidence
                 };
             }
         }
 
-        _memoryCache.Set(cacheKey, UnresolvedCacheValue, UnresolvedCacheDuration);
+        await UpsertMappingAsync(
+            league,
+            sportKey: null,
+            resolutionSource: "unresolved",
+            confidence: 0,
+            isVerified: false,
+            notes: "No reliable The Odds sport key candidate could be resolved.",
+            touchLastUsed: false,
+            cancellationToken);
+
+        CacheUnresolved(leagueApiId);
 
         return new TheOddsSportKeyResolutionResult
         {
             RequestsUsed = requestsUsed,
             Source = "unresolved"
         };
+    }
+
+    public async Task<IReadOnlyList<TheOddsSportKeyCandidateDto>> SuggestCandidatesAsync(
+        long leagueApiId,
+        int season,
+        int limit = 5,
+        CancellationToken cancellationToken = default)
+    {
+        limit = Math.Clamp(limit, 1, 20);
+
+        var league = await _dbContext.Leagues
+            .AsNoTracking()
+            .Include(x => x.Country)
+            .Where(x => x.ApiLeagueId == leagueApiId && x.Season == season)
+            .Select(x => new LeagueLookupContext
+            {
+                LeagueApiId = x.ApiLeagueId,
+                Season = x.Season,
+                LeagueName = x.Name,
+                CountryName = x.Country.Name
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (league is null)
+            return Array.Empty<TheOddsSportKeyCandidateDto>();
+
+        var sports = (await GetActiveSoccerSportsAsync(cancellationToken)).Sports;
+        var candidates = BuildCandidates(league, sports)
+            .Take(limit)
+            .Select(x => new TheOddsSportKeyCandidateDto
+            {
+                SportKey = x.Sport.Key,
+                Title = x.Sport.Title,
+                Description = x.Sport.Description,
+                Score = x.Score
+            })
+            .ToList();
+
+        return candidates;
     }
 
     private async Task<(IReadOnlyList<TheOddsApiSport> Sports, int RequestsUsed)> GetActiveSoccerSportsAsync(
@@ -262,6 +388,44 @@ public class TheOddsSportKeyResolverService
         return (sports, 1);
     }
 
+    private async Task UpsertMappingAsync(
+        LeagueLookupContext league,
+        string? sportKey,
+        string resolutionSource,
+        int confidence,
+        bool isVerified,
+        string? notes,
+        bool touchLastUsed,
+        CancellationToken cancellationToken)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var mapping = await _dbContext.TheOddsLeagueMappings
+            .FirstOrDefaultAsync(x => x.ApiFootballLeagueId == league.LeagueApiId, cancellationToken);
+
+        if (mapping is null)
+        {
+            mapping = new TheOddsLeagueMapping
+            {
+                ApiFootballLeagueId = league.LeagueApiId,
+                CreatedAtUtc = nowUtc
+            };
+            _dbContext.TheOddsLeagueMappings.Add(mapping);
+        }
+
+        mapping.LeagueName = league.LeagueName;
+        mapping.CountryName = league.CountryName;
+        mapping.TheOddsSportKey = sportKey;
+        mapping.ResolutionSource = resolutionSource;
+        mapping.Confidence = confidence;
+        mapping.IsVerified = isVerified;
+        mapping.Notes = notes;
+        mapping.LastResolvedAtUtc = nowUtc;
+        mapping.LastUsedAtUtc = touchLastUsed ? nowUtc : mapping.LastUsedAtUtc;
+        mapping.UpdatedAtUtc = nowUtc;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private static string? TryResolveFromKnownAliases(
         LeagueLookupContext league,
         IReadOnlyCollection<TheOddsApiSport> sports)
@@ -276,6 +440,22 @@ public class TheOddsSportKeyResolverService
         }
 
         return null;
+    }
+
+    private static List<SportCandidateScore> BuildCandidates(
+        LeagueLookupContext league,
+        IReadOnlyCollection<TheOddsApiSport> sports)
+    {
+        return sports
+            .Select(x => new SportCandidateScore
+            {
+                Sport = x,
+                Score = ScoreCandidate(league, x)
+            })
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Sport.Key, StringComparer.Ordinal)
+            .ToList();
     }
 
     private static int ScoreCandidate(
@@ -397,8 +577,14 @@ public class TheOddsSportKeyResolverService
         return string.Concat(NormalizeTokens(value));
     }
 
-    private static string BuildCacheKey(long leagueApiId, int season) =>
-        $"theodds:sportkey:{leagueApiId}:{season}";
+    private void CacheResolved(long leagueApiId, string sportKey) =>
+        _memoryCache.Set(BuildCacheKey(leagueApiId), sportKey, ResolvedCacheDuration);
+
+    private void CacheUnresolved(long leagueApiId) =>
+        _memoryCache.Set(BuildCacheKey(leagueApiId), UnresolvedCacheValue, UnresolvedCacheDuration);
+
+    private static string BuildCacheKey(long leagueApiId) =>
+        $"theodds:sportkey:{leagueApiId}";
 
     private sealed class LeagueLookupContext
     {
@@ -420,6 +606,8 @@ public class TheOddsSportKeyResolutionResult
     public string? SportKey { get; set; }
     public int RequestsUsed { get; set; }
     public string Source { get; set; } = string.Empty;
+    public int Confidence { get; set; }
+    public bool IsVerified { get; set; }
 }
 
 public class TheOddsFixtureLookupContext
@@ -427,4 +615,12 @@ public class TheOddsFixtureLookupContext
     public DateTime KickoffAtUtc { get; set; }
     public string HomeTeamName { get; set; } = string.Empty;
     public string AwayTeamName { get; set; } = string.Empty;
+}
+
+public class TheOddsSportKeyCandidateDto
+{
+    public string SportKey { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int Score { get; set; }
 }

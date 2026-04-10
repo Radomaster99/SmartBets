@@ -13,15 +13,18 @@ public class DebugController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _footballApiService;
+    private readonly TheOddsSportKeyResolverService _theOddsSportKeyResolverService;
 
     public DebugController(
         IConfiguration configuration,
         AppDbContext dbContext,
-        FootballApiService footballApiService)
+        FootballApiService footballApiService,
+        TheOddsSportKeyResolverService theOddsSportKeyResolverService)
     {
         _configuration = configuration;
         _dbContext = dbContext;
         _footballApiService = footballApiService;
+        _theOddsSportKeyResolverService = theOddsSportKeyResolverService;
     }
 
     [HttpGet("config")]
@@ -55,7 +58,108 @@ public class DebugController : ControllerBase
             Teams = await _dbContext.Teams.CountAsync(cancellationToken),
             Fixtures = await _dbContext.Fixtures.CountAsync(cancellationToken),
             SupportedLeagues = await _dbContext.SupportedLeagues.CountAsync(cancellationToken),
-            LiveOdds = await _dbContext.LiveOdds.CountAsync(cancellationToken)
+            LiveOdds = await _dbContext.LiveOdds.CountAsync(cancellationToken),
+            TheOddsLiveOdds = await _dbContext.TheOddsLiveOdds.CountAsync(cancellationToken),
+            TheOddsLeagueMappings = await _dbContext.TheOddsLeagueMappings.CountAsync(cancellationToken)
+        });
+    }
+
+    [HttpGet("the-odds/mappings")]
+    public async Task<IActionResult> TheOddsMappings(
+        [FromQuery] long? leagueId,
+        [FromQuery] bool resolvedOnly = false,
+        [FromQuery] int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        limit = Math.Clamp(limit, 1, 500);
+
+        var query = _dbContext.TheOddsLeagueMappings
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (leagueId.HasValue)
+        {
+            query = query.Where(x => x.ApiFootballLeagueId == leagueId.Value);
+        }
+
+        if (resolvedOnly)
+        {
+            query = query.Where(x => x.TheOddsSportKey != null);
+        }
+
+        var items = await query
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .ThenBy(x => x.ApiFootballLeagueId)
+            .Take(limit)
+            .Select(x => new
+            {
+                x.ApiFootballLeagueId,
+                x.LeagueName,
+                x.CountryName,
+                x.TheOddsSportKey,
+                x.ResolutionSource,
+                x.Confidence,
+                x.IsVerified,
+                x.Notes,
+                x.LastResolvedAtUtc,
+                x.LastUsedAtUtc,
+                x.UpdatedAtUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new
+        {
+            Count = items.Count,
+            Items = items
+        });
+    }
+
+    [HttpGet("the-odds/mappings/suggestions")]
+    public async Task<IActionResult> TheOddsMappingSuggestions(
+        [FromQuery] long leagueId,
+        [FromQuery] int season,
+        [FromQuery] int limit = 5,
+        CancellationToken cancellationToken = default)
+    {
+        if (leagueId <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        limit = Math.Clamp(limit, 1, 20);
+
+        var existing = await _dbContext.TheOddsLeagueMappings
+            .AsNoTracking()
+            .Where(x => x.ApiFootballLeagueId == leagueId)
+            .Select(x => new
+            {
+                x.ApiFootballLeagueId,
+                x.LeagueName,
+                x.CountryName,
+                x.TheOddsSportKey,
+                x.ResolutionSource,
+                x.Confidence,
+                x.IsVerified,
+                x.Notes,
+                x.LastResolvedAtUtc,
+                x.LastUsedAtUtc,
+                x.UpdatedAtUtc
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var suggestions = await _theOddsSportKeyResolverService.SuggestCandidatesAsync(
+            leagueId,
+            season,
+            limit,
+            cancellationToken);
+
+        return Ok(new
+        {
+            LeagueId = leagueId,
+            Season = season,
+            Existing = existing,
+            Suggestions = suggestions
         });
     }
 

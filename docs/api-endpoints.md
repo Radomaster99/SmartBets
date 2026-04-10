@@ -2734,8 +2734,10 @@ Fields:
 - `LeagueSportKeys`
 
 Important:
-- `LeagueSportKeys` maps local API-Football `leagueId` values to The Odds API `sport_key`
-- without this mapping the provider is skipped for that league
+- `LeagueSportKeys` is now optional
+- if a `leagueId -> sport_key` override is configured there, it wins immediately
+- if no override is configured, the backend now tries to resolve and persist the mapping automatically
+- Render env vars are no longer required per league for the normal path
 
 ### 32.2 New Table
 
@@ -2765,6 +2767,9 @@ Response:
 Key fields:
 - `SourceProvider`
 - `SportKey`
+- `SportKeySource`
+- `SportKeyConfidence`
+- `SportKeyVerified`
 - `ProviderEnabled`
 - `ProviderConfigured`
 - `SkippedReason`
@@ -2843,3 +2848,115 @@ EF migration:
 
 SQL fallback:
 - `sql/stage11_the_odds_api_live_odds.sql`
+
+## 33. Stage 12: The Odds League Sport-Key Auto Mapping
+
+Stage 12 removes the operational need to maintain one Render env var per league for The Odds API.
+
+The backend now keeps a persisted local mapping between:
+- API-Football `leagueId`
+- The Odds API `sport_key`
+
+### 33.1 New Table
+
+New table:
+- `the_odds_league_mappings`
+
+Purpose:
+- stores the resolved `leagueId -> sport_key` crosswalk
+- avoids repeating provider discovery work on every sync
+- keeps resolution metadata so production debugging is much easier
+
+Main fields:
+- `ApiFootballLeagueId`
+- `LeagueName`
+- `CountryName`
+- `TheOddsSportKey`
+- `ResolutionSource`
+- `Confidence`
+- `IsVerified`
+- `Notes`
+- `LastResolvedAtUtc`
+- `LastUsedAtUtc`
+
+### 33.2 Resolution Flow
+
+When `POST /api/odds/live/the-odds/sync` needs a sport key, the backend now tries in this order:
+- configured override from `TheOddsApi:LeagueSportKeys`
+- existing row in `the_odds_league_mappings`
+- built-in known aliases for common leagues
+- heuristic match against the active soccer sports catalog from The Odds API
+- provider-assisted fixture matching for the best candidates
+
+If a reliable match is found:
+- the mapping is persisted in `the_odds_league_mappings`
+- future syncs reuse it directly
+
+If no reliable match is found:
+- the unresolved state is also persisted
+- the backend does not keep hammering the provider on every request
+
+### 33.3 New Debug Endpoints
+
+`GET /api/debug/the-odds/mappings`
+
+Purpose:
+- lists the persisted The Odds sport-key mappings
+
+Query parameters:
+- `leagueId` - optional
+- `resolvedOnly` - optional, default `false`
+- `limit` - optional, default `100`, clamp `1..500`
+
+Response:
+- `Count`
+- `Items`
+
+Each item contains:
+- `ApiFootballLeagueId`
+- `LeagueName`
+- `CountryName`
+- `TheOddsSportKey`
+- `ResolutionSource`
+- `Confidence`
+- `IsVerified`
+- `Notes`
+- `LastResolvedAtUtc`
+- `LastUsedAtUtc`
+- `UpdatedAtUtc`
+
+`GET /api/debug/the-odds/mappings/suggestions`
+
+Purpose:
+- shows the current stored mapping plus the best automatic candidates for one league-season
+
+Query parameters:
+- `leagueId` - required
+- `season` - required
+- `limit` - optional, default `5`, clamp `1..20`
+
+Response:
+- `LeagueId`
+- `Season`
+- `Existing`
+- `Suggestions`
+
+Each suggestion contains:
+- `SportKey`
+- `Title`
+- `Description`
+- `Score`
+
+### 33.4 Debug DB Snapshot Additions
+
+`GET /api/debug/db` now also returns:
+- `TheOddsLiveOdds`
+- `TheOddsLeagueMappings`
+
+### 33.5 Database Apply
+
+EF migration:
+- `Migrations/20260410183907_Stage12TheOddsLeagueMappings.cs`
+
+SQL fallback:
+- `sql/stage12_the_odds_league_mappings.sql`

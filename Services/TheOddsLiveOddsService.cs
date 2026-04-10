@@ -113,11 +113,17 @@ public class TheOddsLiveOddsService
         if (string.IsNullOrWhiteSpace(resolution.SportKey))
         {
             result.SkippedReason = "unable_to_resolve_league_sport_key";
+            result.SportKeySource = resolution.Source;
+            result.SportKeyConfidence = resolution.Confidence;
+            result.SportKeyVerified = resolution.IsVerified;
             return result;
         }
 
         var sportKey = resolution.SportKey!;
         result.SportKey = sportKey;
+        result.SportKeySource = resolution.Source;
+        result.SportKeyConfidence = resolution.Confidence;
+        result.SportKeyVerified = resolution.IsVerified;
 
         var syncResult = await SyncFixtureScopeGroupAsync(fixtures, sportKey, options, cancellationToken);
         result.RequestsUsed += syncResult.RequestsUsed;
@@ -227,6 +233,7 @@ public class TheOddsLiveOddsService
             if (string.IsNullOrWhiteSpace(resolution.SportKey))
             {
                 result.LeaguesMissingSportKeyMapping++;
+                result.LeaguesUnresolvedSportKey++;
                 continue;
             }
 
@@ -927,6 +934,7 @@ public class TheOddsLiveOddsBatchSyncResult
     public int LiveFixturesResolved { get; set; }
     public int LeaguesRequested { get; set; }
     public int LeaguesMissingSportKeyMapping { get; set; }
+    public int LeaguesUnresolvedSportKey { get; set; }
     public int RequestsUsed { get; set; }
     public int ProviderEventsReceived { get; set; }
     public int FixturesMatched { get; set; }
