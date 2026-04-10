@@ -162,8 +162,8 @@ Stage 10 core-data automation refactor:
   - hot fixture leagues every 2h
   - live fixture heartbeat every 30s for all leagues
   - pre-match odds every 6h / 2h / 30m / 15m depending on kickoff proximity
-  - live odds every 60s for live leagues
-- quota defaults are now tuned for a 70 000/day plan, with early degradation before the hard limit:
+  - live odds every 30s for live leagues
+- quota defaults are now tuned for a 75 000/day plan, with early degradation before the hard limit:
   - `LowDailyRemainingThreshold = 10000`
   - `CriticalDailyRemainingThreshold = 2500`
 

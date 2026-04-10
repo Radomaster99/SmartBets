@@ -57,12 +57,17 @@ X-API-KEY: your-token
 
 ### 2.5 Конфигурация
 
-Използваните ключове в момента са:
+Основните конфигурационни секции в момента са:
 
 - `ConnectionStrings:DefaultConnection`
 - `ApiFootball:BaseUrl`
 - `ApiFootball:ApiKey`
+- `ApiFootballClient:*`
 - `ApiAuth:Token`
+- `JwtAuth:*`
+- `CoreDataAutomation:*`
+- `DataRetention:*`
+- `TheOddsApi:*`
 - `CORS:AllowedOrigins`
 - env var `PORT`
 
@@ -737,7 +742,7 @@ Query parameters:
 
 Stage 10 note:
 - preload now works in core-data mode
-- it bootstraps current league-seasons instead of reading only `supported_leagues`
+- it bootstraps current league-seasons from the in-memory/current catalog state
 - it syncs:
   - countries
   - leagues
@@ -754,15 +759,18 @@ Stage 10 note:
 Текущ ред на работа:
 - sync countries
 - sync leagues
-- взема активните записи от `supported_leagues`
-- за всяка поддържана лига/сезон изпълнява:
+- sync current league-season targets
+- sync bookmaker reference catalog
+- за всяка избрана current league/season изпълнява:
   - teams sync
-  - upcoming fixtures sync
-  - standings sync
+  - full fixtures sync
+  - optional pre-match odds sync, само ако `includeOdds=true`
 
 Важно:
-- в текущата имплементация preload не sync-ва `fixtures_full`
-- preload не sync-ва odds
+- preload не sync-ва standings в core mode
+- preload не sync-ва team statistics в core mode
+- preload не sync-ва match-center, preview или league analytics datasets
+- полето `SupportedLeaguesCount` в response-а е legacy име; в момента показва броя на избраните current league-season targets
 
 Отговор:
 - `PreloadSyncResult`
@@ -774,6 +782,20 @@ Stage 10 note:
 - `StoppedEarly`
 - `StopReason`
 - `Leagues`
+
+Всяка entry в `Leagues` съдържа:
+- `LeagueApiId`
+- `Season`
+- `TeamsProcessed`
+- `TeamsInserted`
+- `TeamsUpdated`
+- `FixturesProcessed`
+- `FixturesInserted`
+- `FixturesUpdated`
+- `FixturesSkippedMissingTeams`
+- `SkippedFeatures`
+- `Status`
+- `Error`
 
 ### 12.2 `POST /api/preload/historical`
 
@@ -816,9 +838,20 @@ Recommended usage:
 Response:
 - `HistoricalBootstrapResult`
 
+`HistoricalBootstrapResult`:
+- `CountriesSynced`
+- `LeaguesSynced`
+- `BookmakersReferenceSynced`
+- `LeagueSeasonsSelected`
+- `StoppedEarly`
+- `StopReason`
+- `Leagues`
+
 Всяка entry в `Leagues` съдържа:
 - `LeagueApiId`
 - `Season`
+- `LeagueName`
+- `CountryName`
 - `TeamsProcessed`
 - `TeamsInserted`
 - `TeamsUpdated`
@@ -826,10 +859,10 @@ Response:
 - `FixturesInserted`
 - `FixturesUpdated`
 - `FixturesSkippedMissingTeams`
-- `StandingsProcessed`
-- `StandingsInserted`
-- `StandingsUpdated`
-- `StandingsSkippedMissingTeams`
+- `OddsFixturesMatched`
+- `OddsSnapshotsInserted`
+- `OddsSnapshotsProcessed`
+- `SkippedFeatures`
 - `Status`
 - `Error`
 
@@ -853,14 +886,25 @@ Query параметри:
 
 `SyncStatusDto`:
 - `GeneratedAtUtc`
+- `ApiQuota`
+- `CoreAutomation`
 - `Global`
 - `Leagues`
 
 `Global` съдържа:
 - `countries`
 - `leagues`
+- `leagues_current`
+- `live_bet_types`
+- `bookmakers_reference`
 
-`Leagues` съдържа по една entry за supported league/season:
+`Leagues` съдържа по една entry за current league/season target от automation catalog-а.
+
+Fallback поведение:
+- ако in-memory current catalog е празен, endpoint-ът пада обратно към локалните `supported_leagues`
+- `IsActive` и `Priority` идват от `supported_leagues`, когато такъв запис съществува
+
+Всяка league entry съдържа:
 - `LeagueApiId`
 - `Season`
 - `LeagueName`
@@ -868,10 +912,24 @@ Query параметри:
 - `IsActive`
 - `Priority`
 - `TeamsLastSyncedAtUtc`
+- `FixturesLiveLastSyncedAtUtc`
 - `FixturesUpcomingLastSyncedAtUtc`
 - `FixturesFullLastSyncedAtUtc`
+- `EventsLastSyncedAtUtc`
+- `StatisticsLastSyncedAtUtc`
+- `LineupsLastSyncedAtUtc`
+- `PlayerStatisticsLastSyncedAtUtc`
+- `PredictionsLastSyncedAtUtc`
+- `InjuriesLastSyncedAtUtc`
+- `TeamStatisticsLastSyncedAtUtc`
+- `RoundsLastSyncedAtUtc`
+- `TopScorersLastSyncedAtUtc`
+- `TopAssistsLastSyncedAtUtc`
+- `TopCardsLastSyncedAtUtc`
 - `StandingsLastSyncedAtUtc`
 - `OddsLastSyncedAtUtc`
+- `LiveOddsLastSyncedAtUtc`
+- `OddsAnalyticsLastSyncedAtUtc`
 - `BookmakersLastSyncedAtUtc`
 
 ## 14. Debug
@@ -1525,13 +1583,13 @@ Behavior:
 - by default skips rows refreshed in the last 20 hours
 - if `teamId` is provided, sync scope is reduced to one team
 - otherwise teams are resolved locally from fixtures first, standings second
-- this is intentionally quota-aware for the 5000 requests/day limit
+- this is intentionally quota-aware and optimized for low-frequency refresh, not live polling
 
 Automation note:
-- this endpoint is not manual-only anymore
-- `POST /api/preload/run` now also runs `TeamAnalyticsService.SyncStatisticsAsync(...)` for active supported leagues after the core teams/fixtures/standings steps
-- the internal background worker also runs a quota-aware daily refresh for `team_statistics` on active supported leagues
-- frontend pages that read `GET /api/teams/{apiTeamId}/statistics` or `GET /api/teams/{apiTeamId}/form` can now populate automatically once preload or the scheduler has run
+- this endpoint is currently a manual/targeted sync flow
+- in the current core-data runtime, `POST /api/preload/run` does not auto-sync `team_statistics`
+- the primary automation worker also does not treat `team_statistics` as part of the default rolling core-data refresh set
+- frontend pages that read `GET /api/teams/{apiTeamId}/statistics` or `GET /api/teams/{apiTeamId}/form` depend on previously stored local data from manual sync or older bootstrap runs
 
 #### `GET /api/teams/{apiTeamId}/statistics?leagueId=&season=`
 
@@ -1740,7 +1798,7 @@ GET /api/leagues/39/dashboard?season=2025
 
 ### 23.9 Quota Strategy
 
-With the 5000 requests/day limit, Stage 4 is designed around daily sync only:
+Stage 4 is designed around daily or otherwise low-frequency sync only:
 - team statistics should be refreshed daily, or right after a completed match if needed
 - rounds should be refreshed daily
 - top scorers, assists and cards should be refreshed daily
@@ -1891,7 +1949,7 @@ Stage 6 adds two practical improvements:
 Purpose:
 - updates live fixture state from API-Football using `/fixtures?live=...`
 - refreshes local score, status, elapsed, referee, venue and round data
-- can scope itself only to active `supported_leagues`, which is the safer default for your 5000 requests/day limit
+- can scope itself only to active `supported_leagues`, which is the safer default when you want tighter control over provider usage
 
 Query parameters:
 - `leagueId` - optional
@@ -2021,11 +2079,12 @@ Response:
 
 Purpose:
 - returns locally stored live bet type IDs
-- these IDs are the ones you must use with live odds
+- these IDs are used only for API-Football live odds filtering via `betId`
 
 Important:
 - live bet IDs are separate from pre-match bet IDs
 - do not reuse `/odds/bets` ids for `/odds/live`
+- The Odds API live 1X2 flow does not use these ids
 
 Response:
 - array of `LiveBetTypeDto`
@@ -2279,6 +2338,7 @@ This keeps the cheapest core refreshes available the longest.
 A new background cleanup worker periodically trims:
 - `sync_errors`
 - `live_odds`
+- `the_odds_live_odds`
 - `pre_match_odds`
 - `odds_open_close`
 - `odds_movements`
@@ -2308,6 +2368,8 @@ Fields:
 - `DerivedOddsAnalyticsRetentionDays`
 
 Current default example:
+- `LiveOddsRetentionDays = 3`
+- `LiveOddsFinishedFixtureRetentionHours = 18`
 - `PreMatchOddsRetentionDays = 14`
 
 Database apply:
@@ -2530,7 +2592,6 @@ The following flows still exist, but are no longer automatically refreshed by th
 - preview auto-refresh
 - team statistics auto-refresh
 - league analytics auto-refresh
-- standings auto-refresh
 
 They are still available through their current endpoints and can still be called manually.
 
@@ -2621,7 +2682,7 @@ Important behavior:
 - it does not trigger per-row on-demand live odds sync
 - if live odds are missing, the backend falls back to stored pre-match best odds
 - for live fixtures this means `source = prematch` or `source = none` does not automatically mean a frontend bug
-- it can also mean API-Football is not returning usable live odds for that fixture in the current live window
+- it can also mean no usable fresh live odds are currently available from the preferred live provider path for that fixture
 
 Additional batch endpoint:
 - `POST /api/odds/live/summary`
@@ -2739,10 +2800,11 @@ Behavior:
   - plus a small priority shortlist controlled by `PriorityKeepaliveCount`
 
 Recommended frontend behavior:
-- send heartbeats every `15..20` seconds
+- send heartbeats every `20..30` seconds
 - send only visible live fixtures
 - stop heartbeats when the tab is hidden
 - the backend-side The Odds API refresh loop should usually run every `60` seconds by default
+- more frequent heartbeats do not imply more frequent provider calls; they only keep viewer interest fresh in the backend registry
 
 Response:
 - `ReceivedFixtureIds`
