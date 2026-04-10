@@ -92,6 +92,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // HTTP client
 builder.Services.AddHttpClient<FootballApiService>();
 builder.Services.AddHttpClient<TheOddsApiService>();
+builder.Services.AddMemoryCache();
 builder.Services.Configure<CoreDataAutomationOptions>(builder.Configuration.GetSection("CoreDataAutomation"));
 builder.Services.Configure<ApiFootballClientOptions>(builder.Configuration.GetSection("ApiFootballClient"));
 builder.Services.Configure<TheOddsApiOptions>(builder.Configuration.GetSection("TheOddsApi"));
@@ -195,6 +196,7 @@ builder.Services.AddScoped<TeamAnalyticsService>();
 builder.Services.AddScoped<LeagueAnalyticsService>();
 builder.Services.AddScoped<BookmakerSyncService>();
 builder.Services.AddScoped<PreMatchOddsService>();
+builder.Services.AddScoped<TheOddsSportKeyResolverService>();
 builder.Services.AddScoped<TheOddsLiveOddsService>();
 builder.Services.AddSingleton<TheOddsViewerActivityService>();
 builder.Services.AddScoped<LiveOddsService>();

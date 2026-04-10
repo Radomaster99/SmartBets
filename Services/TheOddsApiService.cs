@@ -92,4 +92,52 @@ public class TheOddsApiService
 
         return result ?? new List<TheOddsApiOddsItem>();
     }
+
+    public async Task<List<TheOddsApiSport>> GetSportsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var options = _optionsMonitor.CurrentValue;
+        if (!options.IsConfigured())
+            throw new InvalidOperationException("TheOddsApi configuration is missing or disabled.");
+
+        var relativeUrl =
+            $"/sports?apiKey={Uri.EscapeDataString(options.ApiKey)}";
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{options.GetBaseUrl()}{relativeUrl}");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            throw new InvalidOperationException("The Odds API rate limit reached. Try again later.");
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var result = await JsonSerializer.DeserializeAsync<List<TheOddsApiSport>>(
+            stream,
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            },
+            cancellationToken);
+
+        return result ?? new List<TheOddsApiSport>();
+    }
+
+    public async Task<List<TheOddsApiSport>> GetActiveSoccerSportsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var sports = await GetSportsAsync(cancellationToken);
+
+        return sports
+            .Where(x =>
+                x.Active &&
+                !x.HasOutrights &&
+                x.Key.StartsWith("soccer_", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Key)
+            .ToList();
+    }
 }
