@@ -2782,6 +2782,11 @@ Key fields:
 - `SnapshotsInserted`
 - `SnapshotsSkippedUnchanged`
 
+Interpretation notes:
+- `200 OK` does not necessarily mean rows were inserted
+- if `SportKey` is present but `FixturesMatched = 0`, the sport-key mapping worked and the remaining issue is fixture matching against the provider event window or provider team naming
+- if `SkippedReason = provider_sync_failed`, `ProviderError` now contains the useful provider/backend error text instead of returning a generic `500`
+
 ### 32.4 Viewer-Driven Live Odds Refresh
 
 The Odds API live odds refresh is now viewer-driven and does not depend on the live status sync layer.
@@ -2806,11 +2811,13 @@ Behavior:
   - plus a small priority shortlist controlled by `PriorityKeepaliveCount`
 
 Recommended frontend behavior:
-- send heartbeats every `20..30` seconds
+- send heartbeats every `25..30` seconds
 - send only visible live fixtures
 - stop heartbeats when the tab is hidden
 - the backend-side The Odds API refresh loop should usually run every `60` seconds by default
 - more frequent heartbeats do not imply more frequent provider calls; they only keep viewer interest fresh in the backend registry
+- this heartbeat affects only live odds refresh priority
+- it does not replace or modify the API-Football live status layer
 
 Response:
 - `ReceivedFixtureIds`
@@ -2841,6 +2848,29 @@ Current provider values:
 Behavior:
 - if stored The Odds API live 1X2 rows exist for the fixture, they are preferred
 - otherwise the backend falls back to the current API-Football live odds storage
+
+Frontend contract notes:
+- for `SourceProvider = the-odds-api`, the current scope is only live `1X2` / `h2h`
+- the backend normalizes that market to `BetName = Match Winner`
+- for `SourceProvider = the-odds-api`, `Values` should be interpreted as the three live outcomes for `Home / Draw / Away`
+- for `SourceProvider = the-odds-api`, `Bookmaker` is the provider bookmaker title and `ExternalBookmakerKey` is the stable provider bookmaker identity
+- for `SourceProvider = the-odds-api`, `BookmakerId` and `ApiBookmakerId` can legitimately stay `0`; this is not a frontend bug
+- if the UI needs a stable React/Vue key for one live market row, prefer:
+  - `SourceProvider + ExternalBookmakerKey + ExternalMarketKey`
+- if `SourceProvider = api-football`, continue using the existing local/API bookmaker ids as before
+- the live status / elapsed / score UI should continue to come from API-Football-backed fixture endpoints, not from The Odds API
+
+Recommended frontend read flow:
+- live fixture list:
+  - `GET /api/fixtures/query?includeLiveOddsSummary=true`
+- live fixture detail odds:
+  - `GET /api/fixtures/{apiFixtureId}/odds/live`
+- visible-card keepalive:
+  - `POST /api/odds/live/viewers/heartbeat`
+
+Important current limitation:
+- do not expect arbitrary live bet markets from The Odds path yet
+- the current backend contract for The Odds live provider is intentionally limited to `Match Winner`
 
 ### 32.6 Database Apply
 
@@ -2896,6 +2926,12 @@ If a reliable match is found:
 If no reliable match is found:
 - the unresolved state is also persisted
 - the backend does not keep hammering the provider on every request
+
+Current practical behavior:
+- common leagues such as the Premier League can resolve immediately through the built-in alias map
+- once a league is resolved once, future syncs usually reuse `the_odds_league_mappings` directly
+- the frontend does not need to know or send `sport_key`
+- the frontend should continue sending only fixture ids to the viewer heartbeat endpoint
 
 ### 33.3 New Debug Endpoints
 

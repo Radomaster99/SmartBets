@@ -16,6 +16,53 @@ public class TheOddsLiveOddsService
         .GetStatusesForBucket(FixtureStateBucket.Live)
         .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly Dictionary<string, string> TeamNameAliases = new(StringComparer.Ordinal)
+    {
+        ["ARSENAL"] = "ARSENAL",
+        ["ASTONVILLA"] = "ASTONVILLA",
+        ["ATHLETICCLUB"] = "ATHLETICBILBAO",
+        ["ATHLETICBILBAO"] = "ATHLETICBILBAO",
+        ["ATLETICODEMADRID"] = "ATLETICOMADRID",
+        ["ATLETICOMADRID"] = "ATLETICOMADRID",
+        ["BAYERNMUNICH"] = "BAYERNMUNICH",
+        ["BORUSSIADORTMUND"] = "BORUSSIADORTMUND",
+        ["BRIGHTON"] = "BRIGHTONHOVEALBION",
+        ["BRIGHTONHOVEALBION"] = "BRIGHTONHOVEALBION",
+        ["CHELSEA"] = "CHELSEA",
+        ["CRYSTALPALACE"] = "CRYSTALPALACE",
+        ["EVERTON"] = "EVERTON",
+        ["INTER"] = "INTERMILAN",
+        ["INTERMILAN"] = "INTERMILAN",
+        ["INTERNAZIONALE"] = "INTERMILAN",
+        ["JUVENTUS"] = "JUVENTUS",
+        ["LEICESTER"] = "LEICESTERCITY",
+        ["LEICESTERCITY"] = "LEICESTERCITY",
+        ["LIVERPOOL"] = "LIVERPOOL",
+        ["MANCHESTERCITY"] = "MANCHESTERCITY",
+        ["MANCITY"] = "MANCHESTERCITY",
+        ["MANCHESTERUNITED"] = "MANCHESTERUNITED",
+        ["MANUNITED"] = "MANCHESTERUNITED",
+        ["MANUTD"] = "MANCHESTERUNITED",
+        ["NEWCASTLE"] = "NEWCASTLEUNITED",
+        ["NEWCASTLEUNITED"] = "NEWCASTLEUNITED",
+        ["NOTTINGHAMFOREST"] = "NOTTINGHAMFOREST",
+        ["NOTTMFOREST"] = "NOTTINGHAMFOREST",
+        ["PARISSAINTGERMAIN"] = "PARISSAINTGERMAIN",
+        ["PSG"] = "PARISSAINTGERMAIN",
+        ["ROMA"] = "ASROMA",
+        ["ASROMA"] = "ASROMA",
+        ["SHEFFIELDUNITED"] = "SHEFFIELDUNITED",
+        ["SHEFFUTD"] = "SHEFFIELDUNITED",
+        ["SPURS"] = "TOTTENHAMHOTSPUR",
+        ["TOTTENHAM"] = "TOTTENHAMHOTSPUR",
+        ["TOTTENHAMHOTSPUR"] = "TOTTENHAMHOTSPUR",
+        ["WESTHAM"] = "WESTHAMUNITED",
+        ["WESTHAMUNITED"] = "WESTHAMUNITED",
+        ["WOLVERHAMPTON"] = "WOLVERHAMPTONWANDERERS",
+        ["WOLVERHAMPTONWANDERERS"] = "WOLVERHAMPTONWANDERERS",
+        ["WOLVES"] = "WOLVERHAMPTONWANDERERS"
+    };
+
     private readonly AppDbContext _dbContext;
     private readonly TheOddsApiService _apiService;
     private readonly TheOddsSportKeyResolverService _sportKeyResolver;
@@ -749,7 +796,11 @@ public class TheOddsLiveOddsService
             }
         }
 
-        return builder.ToString();
+        var normalizedTeamName = builder.ToString();
+
+        return TeamNameAliases.TryGetValue(normalizedTeamName, out var canonical)
+            ? canonical
+            : normalizedTeamName;
     }
 
     private static bool ShouldAttemptRefresh(
