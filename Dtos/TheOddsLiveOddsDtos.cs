@@ -15,6 +15,7 @@ public class TheOddsLiveOddsSyncResultDto
     public bool ProviderEnabled { get; set; }
     public bool ProviderConfigured { get; set; }
     public string? SkippedReason { get; set; }
+    public string? ProviderError { get; set; }
     public int RequestsUsed { get; set; }
     public int ProviderEventsReceived { get; set; }
     public int FixturesMatched { get; set; }

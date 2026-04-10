@@ -2773,6 +2773,7 @@ Key fields:
 - `ProviderEnabled`
 - `ProviderConfigured`
 - `SkippedReason`
+- `ProviderError`
 - `ProviderEventsReceived`
 - `FixturesMatched`
 - `FixturesMissingMatch`

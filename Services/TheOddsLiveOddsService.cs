@@ -68,74 +68,89 @@ public class TheOddsLiveOddsService
             return result;
         }
 
-        var fixtures = await _dbContext.Fixtures
-            .AsNoTracking()
-            .Where(x =>
-                x.League.ApiLeagueId == leagueApiId &&
-                x.Season == season &&
-                x.Status != null &&
-                LiveStatuses.Contains(x.Status))
-            .Select(x => new FixtureScope
-            {
-                FixtureId = x.Id,
-                ApiFixtureId = x.ApiFixtureId,
-                LeagueApiId = x.League.ApiLeagueId,
-                Season = x.Season,
-                KickoffAtUtc = x.KickoffAt,
-                Status = x.Status,
-                HomeTeamName = x.HomeTeam.Name,
-                AwayTeamName = x.AwayTeam.Name
-            })
-            .ToListAsync(cancellationToken);
-
-        if (fixtures.Count == 0)
+        try
         {
-            result.SkippedReason = "no_live_fixtures_in_scope";
-            return result;
-        }
+            var fixtures = await _dbContext.Fixtures
+                .AsNoTracking()
+                .Where(x =>
+                    x.League.ApiLeagueId == leagueApiId &&
+                    x.Season == season &&
+                    x.Status != null &&
+                    LiveStatuses.Contains(x.Status))
+                .Select(x => new FixtureScope
+                {
+                    FixtureId = x.Id,
+                    ApiFixtureId = x.ApiFixtureId,
+                    LeagueApiId = x.League.ApiLeagueId,
+                    Season = x.Season,
+                    KickoffAtUtc = x.KickoffAt,
+                    Status = x.Status,
+                    HomeTeamName = x.HomeTeam.Name,
+                    AwayTeamName = x.AwayTeam.Name
+                })
+                .ToListAsync(cancellationToken);
 
-        options.TryGetSportKey(leagueApiId, out var configuredSportKey);
-        var resolution = await _sportKeyResolver.ResolveAsync(
-            leagueApiId,
-            season,
-            configuredSportKey,
-            fixtures.Select(x => new TheOddsFixtureLookupContext
+            if (fixtures.Count == 0)
             {
-                KickoffAtUtc = x.KickoffAtUtc,
-                HomeTeamName = x.HomeTeamName,
-                AwayTeamName = x.AwayTeamName
-            }).ToList(),
-            options.GetMatchTolerance(),
-            cancellationToken);
+                result.SkippedReason = "no_live_fixtures_in_scope";
+                return result;
+            }
 
-        result.RequestsUsed += resolution.RequestsUsed;
+            options.TryGetSportKey(leagueApiId, out var configuredSportKey);
+            var resolution = await _sportKeyResolver.ResolveAsync(
+                leagueApiId,
+                season,
+                configuredSportKey,
+                fixtures.Select(x => new TheOddsFixtureLookupContext
+                {
+                    KickoffAtUtc = x.KickoffAtUtc,
+                    HomeTeamName = x.HomeTeamName,
+                    AwayTeamName = x.AwayTeamName
+                }).ToList(),
+                options.GetMatchTolerance(),
+                cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(resolution.SportKey))
-        {
-            result.SkippedReason = "unable_to_resolve_league_sport_key";
+            result.RequestsUsed += resolution.RequestsUsed;
+
+            if (string.IsNullOrWhiteSpace(resolution.SportKey))
+            {
+                result.SkippedReason = "unable_to_resolve_league_sport_key";
+                result.SportKeySource = resolution.Source;
+                result.SportKeyConfidence = resolution.Confidence;
+                result.SportKeyVerified = resolution.IsVerified;
+                return result;
+            }
+
+            var sportKey = resolution.SportKey!;
+            result.SportKey = sportKey;
             result.SportKeySource = resolution.Source;
             result.SportKeyConfidence = resolution.Confidence;
             result.SportKeyVerified = resolution.IsVerified;
+
+            var syncResult = await SyncFixtureScopeGroupAsync(fixtures, sportKey, options, cancellationToken);
+            result.RequestsUsed += syncResult.RequestsUsed;
+            result.ProviderEventsReceived = syncResult.ProviderEventsReceived;
+            result.FixturesMatched = syncResult.FixturesMatched;
+            result.FixturesMissingMatch = syncResult.FixturesMissingMatch;
+            result.BookmakersProcessed = syncResult.BookmakersProcessed;
+            result.SnapshotsProcessed = syncResult.SnapshotsProcessed;
+            result.SnapshotsInserted = syncResult.SnapshotsInserted;
+            result.SnapshotsSkippedUnchanged = syncResult.SnapshotsSkippedUnchanged;
+
             return result;
         }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "The Odds live sync failed for league {LeagueApiId}/{Season}.",
+                leagueApiId,
+                season);
 
-        var sportKey = resolution.SportKey!;
-        result.SportKey = sportKey;
-        result.SportKeySource = resolution.Source;
-        result.SportKeyConfidence = resolution.Confidence;
-        result.SportKeyVerified = resolution.IsVerified;
-
-        var syncResult = await SyncFixtureScopeGroupAsync(fixtures, sportKey, options, cancellationToken);
-        result.RequestsUsed += syncResult.RequestsUsed;
-        result.ProviderEventsReceived = syncResult.ProviderEventsReceived;
-        result.FixturesMatched = syncResult.FixturesMatched;
-        result.FixturesMissingMatch = syncResult.FixturesMissingMatch;
-        result.BookmakersProcessed = syncResult.BookmakersProcessed;
-        result.SnapshotsProcessed = syncResult.SnapshotsProcessed;
-        result.SnapshotsInserted = syncResult.SnapshotsInserted;
-        result.SnapshotsSkippedUnchanged = syncResult.SnapshotsSkippedUnchanged;
-
-        return result;
+            result.SkippedReason = "provider_sync_failed";
+            result.ProviderError = BuildSafeErrorMessage(ex);
+            return result;
+        }
     }
 
     public async Task<TheOddsLiveOddsBatchSyncResult> SyncFixturesLiveOddsAsync(
@@ -174,88 +189,98 @@ public class TheOddsLiveOddsService
             return result;
         }
 
-        var fixtures = await _dbContext.Fixtures
-            .AsNoTracking()
-            .Where(x => distinctApiFixtureIds.Contains(x.ApiFixtureId))
-            .Where(x => x.Status != null && LiveStatuses.Contains(x.Status))
-            .Select(x => new FixtureScope
-            {
-                FixtureId = x.Id,
-                ApiFixtureId = x.ApiFixtureId,
-                LeagueApiId = x.League.ApiLeagueId,
-                Season = x.Season,
-                KickoffAtUtc = x.KickoffAt,
-                Status = x.Status,
-                HomeTeamName = x.HomeTeam.Name,
-                AwayTeamName = x.AwayTeam.Name
-            })
-            .ToListAsync(cancellationToken);
-
-        result.FixturesRequested = distinctApiFixtureIds.Count;
-        result.LiveFixturesResolved = fixtures.Count;
-
-        if (fixtures.Count == 0)
+        try
         {
-            result.SkippedReason = "no_live_fixtures_in_scope";
-            return result;
-        }
-
-        var groups = fixtures
-            .GroupBy(x => x.LeagueApiId)
-            .Select(group => new
-            {
-                LeagueApiId = group.Key,
-                Season = group.Select(x => x.Season).First(),
-                Fixtures = group.ToList()
-            })
-            .ToList();
-
-        result.LeaguesRequested = groups.Count;
-
-        foreach (var group in groups)
-        {
-            options.TryGetSportKey(group.LeagueApiId, out var configuredSportKey);
-            var resolution = await _sportKeyResolver.ResolveAsync(
-                group.LeagueApiId,
-                group.Season,
-                configuredSportKey,
-                group.Fixtures.Select(x => new TheOddsFixtureLookupContext
+            var fixtures = await _dbContext.Fixtures
+                .AsNoTracking()
+                .Where(x => distinctApiFixtureIds.Contains(x.ApiFixtureId))
+                .Where(x => x.Status != null && LiveStatuses.Contains(x.Status))
+                .Select(x => new FixtureScope
                 {
-                    KickoffAtUtc = x.KickoffAtUtc,
-                    HomeTeamName = x.HomeTeamName,
-                    AwayTeamName = x.AwayTeamName
-                }).ToList(),
-                options.GetMatchTolerance(),
-                cancellationToken);
+                    FixtureId = x.Id,
+                    ApiFixtureId = x.ApiFixtureId,
+                    LeagueApiId = x.League.ApiLeagueId,
+                    Season = x.Season,
+                    KickoffAtUtc = x.KickoffAt,
+                    Status = x.Status,
+                    HomeTeamName = x.HomeTeam.Name,
+                    AwayTeamName = x.AwayTeam.Name
+                })
+                .ToListAsync(cancellationToken);
 
-            result.RequestsUsed += resolution.RequestsUsed;
+            result.FixturesRequested = distinctApiFixtureIds.Count;
+            result.LiveFixturesResolved = fixtures.Count;
 
-            if (string.IsNullOrWhiteSpace(resolution.SportKey))
+            if (fixtures.Count == 0)
             {
-                result.LeaguesMissingSportKeyMapping++;
-                result.LeaguesUnresolvedSportKey++;
-                continue;
+                result.SkippedReason = "no_live_fixtures_in_scope";
+                return result;
             }
 
-            var sportKey = resolution.SportKey!;
+            var groups = fixtures
+                .GroupBy(x => x.LeagueApiId)
+                .Select(group => new
+                {
+                    LeagueApiId = group.Key,
+                    Season = group.Select(x => x.Season).First(),
+                    Fixtures = group.ToList()
+                })
+                .ToList();
 
-            var syncResult = await SyncFixtureScopeGroupAsync(
-                group.Fixtures,
-                sportKey,
-                options,
-                cancellationToken);
+            result.LeaguesRequested = groups.Count;
 
-            result.RequestsUsed += syncResult.RequestsUsed;
-            result.ProviderEventsReceived += syncResult.ProviderEventsReceived;
-            result.FixturesMatched += syncResult.FixturesMatched;
-            result.FixturesMissingMatch += syncResult.FixturesMissingMatch;
-            result.BookmakersProcessed += syncResult.BookmakersProcessed;
-            result.SnapshotsProcessed += syncResult.SnapshotsProcessed;
-            result.SnapshotsInserted += syncResult.SnapshotsInserted;
-            result.SnapshotsSkippedUnchanged += syncResult.SnapshotsSkippedUnchanged;
+            foreach (var group in groups)
+            {
+                options.TryGetSportKey(group.LeagueApiId, out var configuredSportKey);
+                var resolution = await _sportKeyResolver.ResolveAsync(
+                    group.LeagueApiId,
+                    group.Season,
+                    configuredSportKey,
+                    group.Fixtures.Select(x => new TheOddsFixtureLookupContext
+                    {
+                        KickoffAtUtc = x.KickoffAtUtc,
+                        HomeTeamName = x.HomeTeamName,
+                        AwayTeamName = x.AwayTeamName
+                    }).ToList(),
+                    options.GetMatchTolerance(),
+                    cancellationToken);
+
+                result.RequestsUsed += resolution.RequestsUsed;
+
+                if (string.IsNullOrWhiteSpace(resolution.SportKey))
+                {
+                    result.LeaguesMissingSportKeyMapping++;
+                    result.LeaguesUnresolvedSportKey++;
+                    continue;
+                }
+
+                var sportKey = resolution.SportKey!;
+
+                var syncResult = await SyncFixtureScopeGroupAsync(
+                    group.Fixtures,
+                    sportKey,
+                    options,
+                    cancellationToken);
+
+                result.RequestsUsed += syncResult.RequestsUsed;
+                result.ProviderEventsReceived += syncResult.ProviderEventsReceived;
+                result.FixturesMatched += syncResult.FixturesMatched;
+                result.FixturesMissingMatch += syncResult.FixturesMissingMatch;
+                result.BookmakersProcessed += syncResult.BookmakersProcessed;
+                result.SnapshotsProcessed += syncResult.SnapshotsProcessed;
+                result.SnapshotsInserted += syncResult.SnapshotsInserted;
+                result.SnapshotsSkippedUnchanged += syncResult.SnapshotsSkippedUnchanged;
+            }
+
+            return result;
         }
-
-        return result;
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "The Odds batch live sync failed.");
+            result.SkippedReason = "provider_sync_failed";
+            result.ProviderError = BuildSafeErrorMessage(ex);
+            return result;
+        }
     }
 
     public async Task<TheOddsLiveOddsSyncResultDto> SyncFixtureLiveOddsAsync(
@@ -873,6 +898,17 @@ public class TheOddsLiveOddsService
         return value.Trim();
     }
 
+    private static string BuildSafeErrorMessage(Exception ex)
+    {
+        var message = ex.GetBaseException().Message;
+        if (string.IsNullOrWhiteSpace(message))
+            return ex.GetType().Name;
+
+        return message.Length <= 500
+            ? message
+            : message[..500];
+    }
+
     private sealed class FixtureScope
     {
         public long FixtureId { get; set; }
@@ -930,6 +966,7 @@ public class TheOddsLiveOddsBatchSyncResult
     public bool ProviderEnabled { get; set; }
     public bool ProviderConfigured { get; set; }
     public string? SkippedReason { get; set; }
+    public string? ProviderError { get; set; }
     public int FixturesRequested { get; set; }
     public int LiveFixturesResolved { get; set; }
     public int LeaguesRequested { get; set; }

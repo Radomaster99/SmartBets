@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using SmartBets.Models.TheOddsApi;
 
@@ -45,12 +46,12 @@ public class TheOddsApiService
 
         if (commenceTimeFromUtc.HasValue)
         {
-            relativeUrl += $"&commenceTimeFrom={Uri.EscapeDataString(commenceTimeFromUtc.Value.ToUniversalTime().ToString("O"))}";
+            relativeUrl += $"&commenceTimeFrom={Uri.EscapeDataString(FormatProviderUtcTimestamp(commenceTimeFromUtc.Value))}";
         }
 
         if (commenceTimeToUtc.HasValue)
         {
-            relativeUrl += $"&commenceTimeTo={Uri.EscapeDataString(commenceTimeToUtc.Value.ToUniversalTime().ToString("O"))}";
+            relativeUrl += $"&commenceTimeTo={Uri.EscapeDataString(FormatProviderUtcTimestamp(commenceTimeToUtc.Value))}";
         }
 
         using var request = new HttpRequestMessage(
@@ -60,10 +61,7 @@ public class TheOddsApiService
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
 
-        if (response.StatusCode == HttpStatusCode.TooManyRequests)
-            throw new InvalidOperationException("The Odds API rate limit reached. Try again later.");
-
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "live odds", sportKey, cancellationToken);
 
         var requestsRemaining = response.Headers.TryGetValues("x-requests-remaining", out var remainingValues)
             ? remainingValues.FirstOrDefault()
@@ -82,13 +80,23 @@ public class TheOddsApiService
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var result = await JsonSerializer.DeserializeAsync<List<TheOddsApiOddsItem>>(
-            stream,
-            new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            },
-            cancellationToken);
+        List<TheOddsApiOddsItem>? result;
+        try
+        {
+            result = await JsonSerializer.DeserializeAsync<List<TheOddsApiOddsItem>>(
+                stream,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                },
+                cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException(
+                $"The Odds API returned an unexpected JSON payload for live odds sport '{sportKey}'.",
+                ex);
+        }
 
         return result ?? new List<TheOddsApiOddsItem>();
     }
@@ -110,19 +118,26 @@ public class TheOddsApiService
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
 
-        if (response.StatusCode == HttpStatusCode.TooManyRequests)
-            throw new InvalidOperationException("The Odds API rate limit reached. Try again later.");
-
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "sports catalog", "sports", cancellationToken);
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var result = await JsonSerializer.DeserializeAsync<List<TheOddsApiSport>>(
-            stream,
-            new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            },
-            cancellationToken);
+        List<TheOddsApiSport>? result;
+        try
+        {
+            result = await JsonSerializer.DeserializeAsync<List<TheOddsApiSport>>(
+                stream,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                },
+                cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException(
+                "The Odds API returned an unexpected JSON payload for the sports catalog.",
+                ex);
+        }
 
         return result ?? new List<TheOddsApiSport>();
     }
@@ -140,4 +155,68 @@ public class TheOddsApiService
             .OrderBy(x => x.Key)
             .ToList();
     }
+
+    private static async Task EnsureSuccessAsync(
+        HttpResponseMessage response,
+        string operation,
+        string identifier,
+        CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var responseBody = await SafeReadBodyAsync(response, cancellationToken);
+        var providerMessage = TryExtractProviderMessage(responseBody);
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            throw new InvalidOperationException(
+                $"The Odds API rate limit reached during {operation} for '{identifier}'. {providerMessage}".Trim());
+        }
+
+        throw new InvalidOperationException(
+            $"The Odds API returned {(int)response.StatusCode} {response.ReasonPhrase} during {operation} for '{identifier}'. {providerMessage}".Trim());
+    }
+
+    private static async Task<string?> SafeReadBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return string.IsNullOrWhiteSpace(body) ? null : body.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string TryExtractProviderMessage(string? responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+            return string.Empty;
+
+        try
+        {
+            var node = JsonNode.Parse(responseBody);
+            var message =
+                node?["message"]?.GetValue<string>() ??
+                node?["error"]?.GetValue<string>() ??
+                node?["detail"]?.GetValue<string>();
+
+            if (!string.IsNullOrWhiteSpace(message))
+                return message.Trim();
+        }
+        catch
+        {
+        }
+
+        const int maxLength = 300;
+        return responseBody.Length <= maxLength
+            ? responseBody
+            : responseBody[..maxLength];
+    }
+
+    private static string FormatProviderUtcTimestamp(DateTime value) =>
+        value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
 }

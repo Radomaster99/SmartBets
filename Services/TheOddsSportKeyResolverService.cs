@@ -188,11 +188,7 @@ public class TheOddsSportKeyResolverService
             }
         }
 
-        var sportsLoad = await GetActiveSoccerSportsAsync(cancellationToken);
-        var sports = sportsLoad.Sports;
-        var requestsUsed = sportsLoad.RequestsUsed;
-
-        var aliasMatch = TryResolveFromKnownAliases(league, sports);
+        var aliasMatch = TryResolveFromKnownAliases(league);
         if (!string.IsNullOrWhiteSpace(aliasMatch))
         {
             await UpsertMappingAsync(
@@ -210,11 +206,14 @@ public class TheOddsSportKeyResolverService
             return new TheOddsSportKeyResolutionResult
             {
                 SportKey = aliasMatch,
-                RequestsUsed = requestsUsed,
                 Source = "known_alias",
                 Confidence = 100
             };
         }
+
+        var sportsLoad = await GetActiveSoccerSportsAsync(cancellationToken);
+        var sports = sportsLoad.Sports;
+        var requestsUsed = sportsLoad.RequestsUsed;
 
         var candidates = BuildCandidates(league, sports);
 
@@ -426,15 +425,12 @@ public class TheOddsSportKeyResolverService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private static string? TryResolveFromKnownAliases(
-        LeagueLookupContext league,
-        IReadOnlyCollection<TheOddsApiSport> sports)
+    private static string? TryResolveFromKnownAliases(LeagueLookupContext league)
     {
         var normalizedCountry = NormalizeForCompare(league.CountryName);
         var normalizedLeagueName = NormalizeForCompare(league.LeagueName);
 
-        if (KnownLeagueAliases.TryGetValue($"{normalizedCountry}|{normalizedLeagueName}", out var knownSportKey) &&
-            sports.Any(x => string.Equals(x.Key, knownSportKey, StringComparison.OrdinalIgnoreCase)))
+        if (KnownLeagueAliases.TryGetValue($"{normalizedCountry}|{normalizedLeagueName}", out var knownSportKey))
         {
             return knownSportKey;
         }
