@@ -91,8 +91,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // HTTP client
 builder.Services.AddHttpClient<FootballApiService>();
+builder.Services.AddHttpClient<TheOddsApiService>();
 builder.Services.Configure<CoreDataAutomationOptions>(builder.Configuration.GetSection("CoreDataAutomation"));
 builder.Services.Configure<ApiFootballClientOptions>(builder.Configuration.GetSection("ApiFootballClient"));
+builder.Services.Configure<TheOddsApiOptions>(builder.Configuration.GetSection("TheOddsApi"));
 builder.Services.Configure<DataRetentionOptions>(builder.Configuration.GetSection("DataRetention"));
 builder.Services.Configure<JwtAuthOptions>(builder.Configuration.GetSection("JwtAuth"));
 builder.Services.AddSingleton<ApiFootballQuotaTelemetryService>();
@@ -193,6 +195,8 @@ builder.Services.AddScoped<TeamAnalyticsService>();
 builder.Services.AddScoped<LeagueAnalyticsService>();
 builder.Services.AddScoped<BookmakerSyncService>();
 builder.Services.AddScoped<PreMatchOddsService>();
+builder.Services.AddScoped<TheOddsLiveOddsService>();
+builder.Services.AddSingleton<TheOddsViewerActivityService>();
 builder.Services.AddScoped<LiveOddsService>();
 builder.Services.AddScoped<OddsAnalyticsService>();
 builder.Services.AddScoped<DiscoveryService>();
@@ -212,6 +216,7 @@ builder.Services.AddScoped<CoreAutomationRepairJobService>();
 builder.Services.AddScoped<DataRetentionService>();
 builder.Services.AddHostedService<CoreDataAutomationBackgroundService>();
 builder.Services.AddHostedService<DataRetentionBackgroundService>();
+builder.Services.AddHostedService<TheOddsViewerDrivenRefreshBackgroundService>();
 
 // CORS
 var allowedOrigins = builder.Configuration["CORS:AllowedOrigins"]?

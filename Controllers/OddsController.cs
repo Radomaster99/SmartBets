@@ -14,6 +14,8 @@ public class OddsController : ControllerBase
 {
     private readonly PreMatchOddsService _preMatchOddsService;
     private readonly LiveOddsService _liveOddsService;
+    private readonly TheOddsLiveOddsService _theOddsLiveOddsService;
+    private readonly TheOddsViewerActivityService _theOddsViewerActivityService;
     private readonly OddsAnalyticsService _oddsAnalyticsService;
     private readonly SyncStateService _syncStateService;
     private readonly AppDbContext _dbContext;
@@ -22,12 +24,16 @@ public class OddsController : ControllerBase
         AppDbContext dbContext,
         PreMatchOddsService preMatchOddsService,
         LiveOddsService liveOddsService,
+        TheOddsLiveOddsService theOddsLiveOddsService,
+        TheOddsViewerActivityService theOddsViewerActivityService,
         OddsAnalyticsService oddsAnalyticsService,
         SyncStateService syncStateService)
     {
         _dbContext = dbContext;
         _preMatchOddsService = preMatchOddsService;
         _liveOddsService = liveOddsService;
+        _theOddsLiveOddsService = theOddsLiveOddsService;
+        _theOddsViewerActivityService = theOddsViewerActivityService;
         _oddsAnalyticsService = oddsAnalyticsService;
         _syncStateService = syncStateService;
     }
@@ -128,6 +134,37 @@ public class OddsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("live/the-odds/sync")]
+    public async Task<IActionResult> SyncTheOddsLiveOdds(
+        [FromQuery] long? apiFixtureId,
+        [FromQuery] long? leagueId,
+        [FromQuery] int? season,
+        CancellationToken cancellationToken = default)
+    {
+        if (!apiFixtureId.HasValue && (!leagueId.HasValue || !season.HasValue))
+            return BadRequest("Provide apiFixtureId or leagueId + season.");
+
+        if (apiFixtureId.HasValue && apiFixtureId.Value <= 0)
+            return BadRequest("apiFixtureId must be greater than 0.");
+
+        if (leagueId.HasValue && leagueId.Value <= 0)
+            return BadRequest("leagueId must be greater than 0.");
+
+        if (season.HasValue && season.Value <= 0)
+            return BadRequest("season must be greater than 0.");
+
+        var result = apiFixtureId.HasValue
+            ? await _theOddsLiveOddsService.SyncFixtureLiveOddsAsync(
+                apiFixtureId.Value,
+                cancellationToken)
+            : await _theOddsLiveOddsService.SyncLeagueLiveOddsAsync(
+                leagueId!.Value,
+                season!.Value,
+                cancellationToken);
+
+        return Ok(result);
+    }
+
     [HttpGet("live")]
     public async Task<IActionResult> GetLiveOdds(
         [FromQuery] long? fixtureId,
@@ -176,6 +213,23 @@ public class OddsController : ControllerBase
             cancellationToken);
 
         return Ok(result);
+    }
+
+    [HttpPost("live/viewers/heartbeat")]
+    public IActionResult HeartbeatTheOddsViewers(
+        [FromBody] TheOddsViewerHeartbeatRequestDto request)
+    {
+        var receivedFixtureIds = request.FixtureIds?.Count ?? 0;
+        var result = _theOddsViewerActivityService.TouchFixtures(request.FixtureIds ?? Array.Empty<long>());
+
+        return Ok(new TheOddsViewerHeartbeatResponseDto
+        {
+            ReceivedFixtureIds = receivedFixtureIds,
+            AcceptedFixtureIds = result.AcceptedFixtureIds,
+            ActiveFixtureIds = result.ActiveFixtureIds,
+            TouchedAtUtc = result.TouchedAtUtc,
+            ViewerHeartbeatTtlSeconds = (int)result.Ttl.TotalSeconds
+        });
     }
 
     [HttpPost("analytics/rebuild")]

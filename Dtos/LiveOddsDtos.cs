@@ -22,6 +22,10 @@ public class LiveOddsMarketDto
 {
     public long FixtureId { get; set; }
     public long ApiFixtureId { get; set; }
+    public string SourceProvider { get; set; } = "api-football";
+    public string? ExternalEventId { get; set; }
+    public string? ExternalBookmakerKey { get; set; }
+    public string? ExternalMarketKey { get; set; }
     public long BookmakerId { get; set; }
     public long ApiBookmakerId { get; set; }
     public string Bookmaker { get; set; } = string.Empty;

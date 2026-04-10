@@ -48,9 +48,12 @@ public class DataRetentionBackgroundService : BackgroundService
                 var result = await retentionService.CleanupAsync(stoppingToken);
 
                 _logger.LogInformation(
-                    "Data retention cleanup completed. SyncErrors={SyncErrors}, LiveOdds={LiveOdds}, PreMatchOdds={PreMatchOdds}, OddsOpenClose={OddsOpenClose}, OddsMovements={OddsMovements}, MarketConsensus={MarketConsensus}",
+                    "Data retention cleanup completed. SyncErrors={SyncErrors}, NormalizedMatchWinnerLiveOdds={NormalizedMatchWinnerLiveOdds}, DeletedNonMatchWinnerLiveOdds={DeletedNonMatchWinnerLiveOdds}, LiveOdds={LiveOdds}, TheOddsLiveOdds={TheOddsLiveOdds}, PreMatchOdds={PreMatchOdds}, OddsOpenClose={OddsOpenClose}, OddsMovements={OddsMovements}, MarketConsensus={MarketConsensus}",
                     result.DeletedSyncErrors,
+                    result.NormalizedLegacyMatchWinnerLiveOdds,
+                    result.DeletedNonMatchWinnerLiveOdds,
                     result.DeletedLiveOdds,
+                    result.DeletedTheOddsLiveOdds,
                     result.DeletedPreMatchOdds,
                     result.DeletedOddsOpenClose,
                     result.DeletedOddsMovements,

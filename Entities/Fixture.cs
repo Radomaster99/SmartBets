@@ -34,6 +34,7 @@ public class Fixture
     public Team AwayTeam { get; set; } = null!;
     public ICollection<PreMatchOdd> PreMatchOdds { get; set; } = new List<PreMatchOdd>();
     public ICollection<LiveOdd> LiveOdds { get; set; } = new List<LiveOdd>();
+    public ICollection<TheOddsLiveOdd> TheOddsLiveOdds { get; set; } = new List<TheOddsLiveOdd>();
     public ICollection<OddsOpenClose> OddsOpenCloses { get; set; } = new List<OddsOpenClose>();
     public ICollection<OddsMovement> OddsMovements { get; set; } = new List<OddsMovement>();
     public ICollection<MarketConsensus> MarketConsensuses { get; set; } = new List<MarketConsensus>();

@@ -46,11 +46,30 @@ public class DataRetentionService
             .Where(x => x.Status == null || !liveStatuses.Contains(x.Status))
             .Select(x => x.Id);
 
+        var matchWinnerAliases = LiveMatchWinnerMarket.GetUppercaseAliases();
+
         var deletedSyncErrors = await _dbContext.SyncErrors
             .Where(x => x.OccurredAt < syncErrorsCutoff)
             .ExecuteDeleteAsync(cancellationToken);
 
+        var normalizedLegacyMatchWinnerLiveOdds = await _dbContext.LiveOdds
+            .Where(x => matchWinnerAliases.Contains(x.BetName.ToUpper()) && x.BetName != PreMatchOddsService.DefaultMarketName)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.BetName, PreMatchOddsService.DefaultMarketName), cancellationToken);
+
+        var deletedNonMatchWinnerLiveOdds = await _dbContext.LiveOdds
+            .Where(x =>
+                !matchWinnerAliases.Contains(x.BetName.ToUpper()) &&
+                !EF.Functions.ILike(x.BetName, LiveMatchWinnerMarket.Contains1X2IlikePattern))
+            .ExecuteDeleteAsync(cancellationToken);
+
         var deletedLiveOdds = await _dbContext.LiveOdds
+            .Where(x =>
+                x.CollectedAtUtc < liveOddsCutoff ||
+                staleFinishedLiveFixtureIdsQuery.Contains(x.FixtureId))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        var deletedTheOddsLiveOdds = await _dbContext.TheOddsLiveOdds
             .Where(x =>
                 x.CollectedAtUtc < liveOddsCutoff ||
                 staleFinishedLiveFixtureIdsQuery.Contains(x.FixtureId))
@@ -76,7 +95,10 @@ public class DataRetentionService
         {
             ExecutedAtUtc = nowUtc,
             DeletedSyncErrors = deletedSyncErrors,
+            NormalizedLegacyMatchWinnerLiveOdds = normalizedLegacyMatchWinnerLiveOdds,
+            DeletedNonMatchWinnerLiveOdds = deletedNonMatchWinnerLiveOdds,
             DeletedLiveOdds = deletedLiveOdds,
+            DeletedTheOddsLiveOdds = deletedTheOddsLiveOdds,
             DeletedPreMatchOdds = deletedPreMatchOdds,
             DeletedOddsOpenClose = deletedOddsOpenClose,
             DeletedOddsMovements = deletedOddsMovements,
@@ -89,7 +111,10 @@ public class DataRetentionCleanupResult
 {
     public DateTime ExecutedAtUtc { get; set; }
     public int DeletedSyncErrors { get; set; }
+    public int NormalizedLegacyMatchWinnerLiveOdds { get; set; }
+    public int DeletedNonMatchWinnerLiveOdds { get; set; }
     public int DeletedLiveOdds { get; set; }
+    public int DeletedTheOddsLiveOdds { get; set; }
     public int DeletedPreMatchOdds { get; set; }
     public int DeletedOddsOpenClose { get; set; }
     public int DeletedOddsMovements { get; set; }

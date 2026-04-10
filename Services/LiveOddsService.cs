@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SmartBets.Data;
 using SmartBets.Dtos;
 using SmartBets.Entities;
@@ -14,6 +15,8 @@ public class LiveOddsService
 {
     private readonly AppDbContext _dbContext;
     private readonly FootballApiService _apiService;
+    private readonly TheOddsLiveOddsService _theOddsLiveOddsService;
+    private readonly IOptionsMonitor<CoreDataAutomationOptions> _automationOptionsMonitor;
     private readonly SyncStateService _syncStateService;
     private readonly IHubContext<LiveOddsHub> _hubContext;
     private readonly ILogger<LiveOddsService> _logger;
@@ -21,12 +24,16 @@ public class LiveOddsService
     public LiveOddsService(
         AppDbContext dbContext,
         FootballApiService apiService,
+        TheOddsLiveOddsService theOddsLiveOddsService,
+        IOptionsMonitor<CoreDataAutomationOptions> automationOptionsMonitor,
         SyncStateService syncStateService,
         IHubContext<LiveOddsHub> hubContext,
         ILogger<LiveOddsService> logger)
     {
         _dbContext = dbContext;
         _apiService = apiService;
+        _theOddsLiveOddsService = theOddsLiveOddsService;
+        _automationOptionsMonitor = automationOptionsMonitor;
         _syncStateService = syncStateService;
         _hubContext = hubContext;
         _logger = logger;
@@ -105,10 +112,18 @@ public class LiveOddsService
         if (!fixtureId.HasValue && !leagueId.HasValue)
             throw new InvalidOperationException("Provide fixtureId or leagueId for live odds sync.");
 
+        var allowAllLiveOddsMarkets = _automationOptionsMonitor.CurrentValue.AllowAllLiveOddsMarkets;
+        var allowedMatchWinnerBetIds = allowAllLiveOddsMarkets || betId.HasValue
+            ? Array.Empty<long>()
+            : await GetStoredMatchWinnerLiveBetIdsAsync(cancellationToken);
+        var providerBetId = !allowAllLiveOddsMarkets && !betId.HasValue && allowedMatchWinnerBetIds.Count == 1
+            ? allowedMatchWinnerBetIds[0]
+            : betId;
+
         var remoteRows = await _apiService.GetLiveOddsAsync(
             fixtureId,
             leagueId,
-            betId,
+            providerBetId,
             bookmakerId: null,
             cancellationToken);
 
@@ -131,7 +146,7 @@ public class LiveOddsService
                 var leagueRows = await _apiService.GetLiveOddsAsync(
                     fixtureId: null,
                     leagueId: storedFixture.LeagueApiId,
-                    betId,
+                    providerBetId,
                     bookmakerId: null,
                     cancellationToken);
 
@@ -139,6 +154,11 @@ public class LiveOddsService
                     .Where(x => x.Fixture.Id == fixtureId.Value)
                     .ToList();
             }
+        }
+
+        if (!allowAllLiveOddsMarkets && !betId.HasValue)
+        {
+            remoteRows = FilterRemoteRowsToMatchWinnerMarkets(remoteRows, allowedMatchWinnerBetIds);
         }
 
         result.ProviderFixturesReceived = remoteRows.Count;
@@ -296,7 +316,7 @@ public class LiveOddsService
                             FixtureId = fixture.FixtureId,
                             Bookmaker = bookmaker,
                             ApiBetId = apiBet.Id,
-                            BetName = apiBet.Name.Trim(),
+                            BetName = LiveMatchWinnerMarket.ToCanonicalBetName(apiBet.Name),
                             OutcomeLabel = normalizedOutcome,
                             Line = normalizedLine,
                             Odd = parsedOdd,
@@ -331,6 +351,11 @@ public class LiveOddsService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         _dbContext.ChangeTracker.Clear();
+
+        if (!allowAllLiveOddsMarkets && !betId.HasValue && localFixtureIds.Count > 0)
+        {
+            await NormalizeAndDeleteNonMatchWinnerLiveOddsAsync(localFixtureIds, cancellationToken);
+        }
 
         result.MissingFixtureApiIdsSample = missingFixtureApiIds.ToList();
 
@@ -374,6 +399,18 @@ public class LiveOddsService
         var fixture = await ResolveFixtureAsync(fixtureId, apiFixtureId, cancellationToken);
         if (fixture is null)
             return Array.Empty<LiveOddsMarketDto>();
+
+        if (!betId.HasValue)
+        {
+            var providerRows = await _theOddsLiveOddsService.GetStoredLiveOddsAsync(
+                fixtureId: fixture.FixtureId,
+                apiFixtureId: null,
+                latestOnly: latestOnly,
+                cancellationToken: cancellationToken);
+
+            if (providerRows.Count > 0)
+                return providerRows;
+        }
 
         var lastSyncedAtUtc = latestOnly
             ? await _dbContext.SyncStates
@@ -486,6 +523,33 @@ public class LiveOddsService
         bool latestOnly = true,
         CancellationToken cancellationToken = default)
     {
+        if (!betId.HasValue)
+        {
+            try
+            {
+                var providerRows = await _theOddsLiveOddsService.GetLiveOddsWithCatchUpAsync(
+                    fixtureId,
+                    apiFixtureId,
+                    latestOnly,
+                    cancellationToken);
+
+                if (providerRows.Count > 0)
+                    return providerRows;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "The Odds live odds read failed for fixtureId={FixtureId}, apiFixtureId={ApiFixtureId}. Falling back to API-Football live odds.",
+                    fixtureId,
+                    apiFixtureId);
+            }
+        }
+
         try
         {
             var result = await GetLiveOddsAsync(
@@ -563,6 +627,11 @@ public class LiveOddsService
 
         if (distinctApiFixtureIds.Count == 0)
             return Array.Empty<FixtureLiveOddsSummaryDto>();
+
+        var theOddsSummariesByApiFixtureId = (await _theOddsLiveOddsService.GetFixtureOddsSummariesAsync(
+                distinctApiFixtureIds,
+                cancellationToken))
+            .ToDictionary(x => x.ApiFixtureId);
 
         var fixtures = await _dbContext.Fixtures
             .AsNoTracking()
@@ -642,6 +711,9 @@ public class LiveOddsService
                 fixture,
                 liveLatestRows.Where(x => x.FixtureId == fixture.FixtureId).ToList(),
                 preMatchLatestRows.Where(x => x.FixtureId == fixture.FixtureId).ToList()))
+            .Select(summary => theOddsSummariesByApiFixtureId.TryGetValue(summary.ApiFixtureId, out var theOddsSummary)
+                ? theOddsSummary
+                : summary)
             .ToList();
 
         return result;
@@ -1137,6 +1209,101 @@ public class LiveOddsService
     private static string NormalizeOutcome(string value)
     {
         return value.Trim().ToUpperInvariant();
+    }
+
+    private async Task<IReadOnlyList<long>> GetStoredMatchWinnerLiveBetIdsAsync(CancellationToken cancellationToken)
+    {
+        return (await _dbContext.LiveBetTypes
+            .AsNoTracking()
+            .OrderBy(x => x.ApiBetId)
+            .Select(x => new { x.ApiBetId, x.Name })
+            .ToListAsync(cancellationToken))
+            .Where(x => LiveMatchWinnerMarket.IsMatchWinnerBetName(x.Name))
+            .Select(x => x.ApiBetId)
+            .ToList();
+    }
+
+    private static List<ApiFootballLiveOddsFixtureItem> FilterRemoteRowsToMatchWinnerMarkets(
+        IReadOnlyList<ApiFootballLiveOddsFixtureItem> remoteRows,
+        IReadOnlyCollection<long> allowedMatchWinnerBetIds)
+    {
+        var result = new List<ApiFootballLiveOddsFixtureItem>();
+
+        foreach (var remoteFixture in remoteRows)
+        {
+            var filteredBookmakers = remoteFixture.Bookmakers
+                .Select(bookmaker => new ApiFootballLiveOddsBookmaker
+                {
+                    Id = bookmaker.Id,
+                    Name = bookmaker.Name,
+                    Stopped = bookmaker.Stopped,
+                    Blocked = bookmaker.Blocked,
+                    Finished = bookmaker.Finished,
+                    Bets = bookmaker.Bets
+                        .Where(apiBet => ShouldKeepMatchWinnerBet(apiBet, allowedMatchWinnerBetIds))
+                        .ToList()
+                })
+                .Where(x => x.Bets.Count > 0)
+                .ToList();
+
+            var filteredOdds = remoteFixture.Odds
+                .Where(apiBet => ShouldKeepMatchWinnerBet(apiBet, allowedMatchWinnerBetIds))
+                .ToList();
+
+            if (filteredBookmakers.Count == 0 && filteredOdds.Count == 0)
+                continue;
+
+            result.Add(new ApiFootballLiveOddsFixtureItem
+            {
+                Fixture = remoteFixture.Fixture,
+                League = remoteFixture.League,
+                Bookmakers = filteredBookmakers,
+                Odds = filteredOdds,
+                Update = remoteFixture.Update,
+                Status = remoteFixture.Status,
+                Stopped = remoteFixture.Stopped,
+                Blocked = remoteFixture.Blocked,
+                Finished = remoteFixture.Finished
+            });
+        }
+
+        return result;
+    }
+
+    private static bool ShouldKeepMatchWinnerBet(
+        ApiFootballLiveOddsBet apiBet,
+        IReadOnlyCollection<long> allowedMatchWinnerBetIds)
+    {
+        return allowedMatchWinnerBetIds.Contains(apiBet.Id) ||
+               LiveMatchWinnerMarket.IsMatchWinnerBetName(apiBet.Name);
+    }
+
+    private async Task NormalizeAndDeleteNonMatchWinnerLiveOddsAsync(
+        IReadOnlyCollection<long> fixtureIds,
+        CancellationToken cancellationToken)
+    {
+        var distinctFixtureIds = fixtureIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList();
+
+        if (distinctFixtureIds.Count == 0)
+            return;
+
+        var aliasNames = LiveMatchWinnerMarket.GetUppercaseAliases();
+
+        await _dbContext.LiveOdds
+            .Where(x => distinctFixtureIds.Contains(x.FixtureId))
+            .Where(x => aliasNames.Contains(x.BetName.ToUpper()) && x.BetName != PreMatchOddsService.DefaultMarketName)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.BetName, PreMatchOddsService.DefaultMarketName), cancellationToken);
+
+        await _dbContext.LiveOdds
+            .Where(x => distinctFixtureIds.Contains(x.FixtureId))
+            .Where(x =>
+                !aliasNames.Contains(x.BetName.ToUpper()) &&
+                !EF.Functions.ILike(x.BetName, LiveMatchWinnerMarket.Contains1X2IlikePattern))
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     private static string BuildSnapshotKey(

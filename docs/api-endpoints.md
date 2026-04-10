@@ -2048,6 +2048,9 @@ Validation:
 Behavior:
 - `fixtureId` and `leagueId` use API ids
 - `betId` must come from `GET /api/odds/live-bets`
+- when `betId` is omitted, the backend now keeps only the live 1X2 market by default
+- any live market whose name contains `1x2` is kept
+- names such as `1x2 - 10 min`, `1x2 - 20 min`, `1x2 - 30 min` remain distinct and are not collapsed into one label
 - the live odds provider currently appears in two shapes and the backend accepts both:
   - legacy `bookmakers[].bets[].values`
   - direct `odds[].values`
@@ -2282,7 +2285,9 @@ A new background cleanup worker periodically trims:
 - `market_consensus`
 
 Current optimization behavior:
+- non-1X2 rows in `live_odds` are automatically normalized/cleaned and are no longer kept by default
 - raw `live_odds` snapshots are still capped by `LiveOddsRetentionDays`
+- raw `the_odds_live_odds` snapshots follow the same live retention window as `live_odds`
 - additionally, live odds for fixtures that are no longer live are trimmed much earlier through `LiveOddsFinishedFixtureRetentionHours`
 - raw `pre_match_odds` snapshots are trimmed by fixture age through `PreMatchOddsRetentionDays`
 - compact derived odds analytics can now live longer than the raw snapshots through `DerivedOddsAnalyticsRetentionDays`
@@ -2447,6 +2452,7 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `LiveOddsIntervalSeconds = 30`
 - `MaxLiveOddsLeaguesPerCycle = 10`
 - `RepairIntervalHours = 4`
+- `AllowAllLiveOddsMarkets = false`
 
 Live odds source note:
 - the current production provider behavior is effectively single-source for `Bet365`
@@ -2632,3 +2638,146 @@ SignalR additions:
   - `LeaveLiveFeed()`
 
 `LiveOddsSummaryUpdated` is emitted only when the effective summary changes.
+
+## 32. Stage 11: The Odds API Live 1X2 Provider
+
+Stage 11 adds a second live-odds provider alongside API-Football.
+
+Scope of the new provider:
+- API-Football remains the source of truth for leagues, teams, fixtures and live status
+- The Odds API is used only for live soccer odds
+- current scope is only `h2h` / 1X2
+- current scope is only regions `uk,eu`
+
+### 32.1 Config
+
+New config section:
+
+`TheOddsApi`
+
+Fields:
+- `Enabled`
+- `BaseUrl`
+- `ApiKey`
+- `Regions`
+- `MarketKey`
+- `OddsFormat`
+- `DateFormat`
+- `FreshnessSeconds`
+- `MatchToleranceMinutes`
+- `EnableViewerDrivenRefresh`
+- `ViewerHeartbeatTtlSeconds`
+- `ViewerRefreshIntervalSeconds`
+- `MaxViewerFixturesPerCycle`
+- `PriorityKeepaliveCount`
+- `LeagueSportKeys`
+
+Important:
+- `LeagueSportKeys` maps local API-Football `leagueId` values to The Odds API `sport_key`
+- without this mapping the provider is skipped for that league
+
+### 32.2 New Table
+
+New table:
+- `the_odds_live_odds`
+
+Purpose:
+- stores raw live `h2h` snapshots from The Odds API
+- keeps provider-native string identities such as event id and bookmaker key, without forcing them into the API-Football live odds schema
+
+### 32.3 New Manual Sync Endpoint
+
+`POST /api/odds/live/the-odds/sync`
+
+Query parameters:
+- `apiFixtureId` - optional
+- `leagueId` - optional
+- `season` - optional
+
+Validation:
+- requires either `apiFixtureId`
+- or `leagueId + season`
+
+Response:
+- `TheOddsLiveOddsSyncResultDto`
+
+Key fields:
+- `SourceProvider`
+- `SportKey`
+- `ProviderEnabled`
+- `ProviderConfigured`
+- `SkippedReason`
+- `ProviderEventsReceived`
+- `FixturesMatched`
+- `FixturesMissingMatch`
+- `BookmakersProcessed`
+- `SnapshotsProcessed`
+- `SnapshotsInserted`
+- `SnapshotsSkippedUnchanged`
+
+### 32.4 Viewer-Driven Live Odds Refresh
+
+The Odds API live odds refresh is now viewer-driven and does not depend on the live status sync layer.
+
+Important separation:
+- API-Football still owns live fixture status, score and finished-state tracking
+- The Odds API is used only for live odds refresh
+
+New heartbeat endpoint:
+
+`POST /api/odds/live/viewers/heartbeat`
+
+Request body:
+- `FixtureIds`
+
+Behavior:
+- the frontend should send only the fixtures that are actually visible on screen
+- a practical frontend implementation is `IntersectionObserver` + periodic heartbeat
+- fixtures stay active only for a short TTL window controlled by `ViewerHeartbeatTtlSeconds`
+- the backend refresh worker then polls The Odds API only for:
+  - active viewed fixtures
+  - plus a small priority shortlist controlled by `PriorityKeepaliveCount`
+
+Recommended frontend behavior:
+- send heartbeats every `15..20` seconds
+- send only visible live fixtures
+- stop heartbeats when the tab is hidden
+- the backend-side The Odds API refresh loop should usually run every `60` seconds by default
+
+Response:
+- `ReceivedFixtureIds`
+- `AcceptedFixtureIds`
+- `ActiveFixtureIds`
+- `TouchedAtUtc`
+- `ViewerHeartbeatTtlSeconds`
+
+### 32.5 Read Path Impact
+
+The following read endpoints can now prefer The Odds API live 1X2 data when available and when `betId` is not explicitly requested:
+- `GET /api/odds/live`
+- `GET /api/fixtures/{apiFixtureId}/odds/live`
+- live odds summaries returned by:
+  - `GET /api/fixtures/query?includeLiveOddsSummary=true`
+  - `POST /api/odds/live/summary`
+
+`LiveOddsMarketDto` may now include:
+- `SourceProvider`
+- `ExternalEventId`
+- `ExternalBookmakerKey`
+- `ExternalMarketKey`
+
+Current provider values:
+- `api-football`
+- `the-odds-api`
+
+Behavior:
+- if stored The Odds API live 1X2 rows exist for the fixture, they are preferred
+- otherwise the backend falls back to the current API-Football live odds storage
+
+### 32.6 Database Apply
+
+EF migration:
+- `Migrations/20260409191810_Stage11TheOddsApiLiveOdds.cs`
+
+SQL fallback:
+- `sql/stage11_the_odds_api_live_odds.sql`

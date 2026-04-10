@@ -44,7 +44,7 @@ public class CoreDataAutomationOptions
     public int OddsFinalIntervalMinutes { get; set; } = 15;
     public int MaxOddsFixturesPerCycle { get; set; } = 12;
     public bool EnableLiveOddsAutoSync { get; set; } = true;
-    public bool AllowAllLiveOddsMarkets { get; set; } = true;
+    public bool AllowAllLiveOddsMarkets { get; set; } = false;
     public int LiveOddsIntervalSeconds { get; set; } = 30;
     public int MaxLiveOddsLeaguesPerCycle { get; set; } = 10;
     public int LiveBetTypesRefreshHours { get; set; } = 24;

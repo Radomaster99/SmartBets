@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     public DbSet<Bookmaker> Bookmakers => Set<Bookmaker>();
     public DbSet<LiveBetType> LiveBetTypes => Set<LiveBetType>();
     public DbSet<LiveOdd> LiveOdds => Set<LiveOdd>();
+    public DbSet<TheOddsLiveOdd> TheOddsLiveOdds => Set<TheOddsLiveOdd>();
     public DbSet<PreMatchOdd> PreMatchOdds => Set<PreMatchOdd>();
     public DbSet<OddsOpenClose> OddsOpenCloses => Set<OddsOpenClose>();
     public DbSet<OddsMovement> OddsMovements => Set<OddsMovement>();
@@ -847,6 +848,75 @@ public class AppDbContext : DbContext
                 .HasForeignKey(x => x.ApiBetId)
                 .HasPrincipalKey(x => x.ApiBetId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TheOddsLiveOdd>(entity =>
+        {
+            entity.ToTable("the_odds_live_odds");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.FixtureId)
+                .HasColumnName("fixture_id");
+
+            entity.Property(x => x.ProviderEventId)
+                .HasColumnName("provider_event_id")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.SportKey)
+                .HasColumnName("sport_key")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.BookmakerKey)
+                .HasColumnName("bookmaker_key")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.BookmakerTitle)
+                .HasColumnName("bookmaker_title")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.MarketKey)
+                .HasColumnName("market_key")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.MarketName)
+                .HasColumnName("market_name")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.OutcomeName)
+                .HasColumnName("outcome_name")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.Point)
+                .HasColumnName("point");
+
+            entity.Property(x => x.Price)
+                .HasColumnName("price");
+
+            entity.Property(x => x.LastUpdateUtc)
+                .HasColumnName("last_update_utc");
+
+            entity.Property(x => x.CollectedAtUtc)
+                .HasColumnName("collected_at_utc");
+
+            entity.HasIndex(x => x.FixtureId);
+            entity.HasIndex(x => x.CollectedAtUtc);
+            entity.HasIndex(x => new { x.FixtureId, x.BookmakerKey, x.MarketKey, x.CollectedAtUtc });
+            entity.HasIndex(x => new { x.FixtureId, x.BookmakerKey, x.MarketKey, x.OutcomeName, x.Point, x.CollectedAtUtc });
+
+            entity.HasOne(x => x.Fixture)
+                .WithMany(x => x.TheOddsLiveOdds)
+                .HasForeignKey(x => x.FixtureId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PreMatchOdd>(entity =>
