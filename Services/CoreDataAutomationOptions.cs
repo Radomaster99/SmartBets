@@ -3,8 +3,8 @@ namespace SmartBets.Services;
 public class CoreDataAutomationOptions
 {
     public bool Enabled { get; set; } = true;
-    public int AutomationDailyBudget { get; set; } = 70000;
-    public int ProviderDailySafetyBuffer { get; set; } = 5000;
+    public int AutomationDailyBudget { get; set; } = 75000;
+    public int ProviderDailySafetyBuffer { get; set; } = 0;
     public int CatalogRefreshDailyBudget { get; set; } = 200;
     public int TeamsRollingDailyBudget { get; set; } = 5000;
     public int StandingsRollingDailyBudget { get; set; } = 6000;

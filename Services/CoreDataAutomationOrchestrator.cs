@@ -557,12 +557,6 @@ public class CoreDataAutomationOrchestrator
             return;
 
         var quotaMode = GetApiQuotaSnapshot().Mode;
-        if (quotaMode == ApiFootballQuotaMode.Critical)
-        {
-            _quotaManager.MarkSkipped(CoreAutomationJobNames.OddsPreMatch, "critical_provider_quota");
-            return;
-        }
-
         var candidates = await SelectDueOddsTargetsAsync(snapshot.OddsFixtures, options, quotaMode, cancellationToken);
         var desiredRequests = candidates.Count;
         if (desiredRequests == 0)
@@ -613,12 +607,6 @@ public class CoreDataAutomationOrchestrator
             return;
 
         var quotaMode = GetApiQuotaSnapshot().Mode;
-        if (quotaMode == ApiFootballQuotaMode.Critical)
-        {
-            _quotaManager.MarkSkipped(CoreAutomationJobNames.OddsLive, "critical_provider_quota");
-            return;
-        }
-
         var betTypesDue = IsDue(state.LastLiveBetTypesRunUtc, nowUtc, options.GetLiveBetTypesRefreshInterval());
         var liveOddsDue = IsDue(state.LastLiveOddsRunUtc, nowUtc, options.GetLiveOddsInterval()) &&
                           snapshot.LiveLeagueSeasons.Count > 0;
@@ -725,12 +713,6 @@ public class CoreDataAutomationOrchestrator
             return;
 
         var quotaMode = GetApiQuotaSnapshot().Mode;
-        if (quotaMode == ApiFootballQuotaMode.Critical)
-        {
-            _quotaManager.MarkSkipped(CoreAutomationJobNames.Repair, "critical_provider_quota");
-            return;
-        }
-
         var repairTargets = snapshot.HotLeagueSeasons
             .Where(x => !hotFixtureKeys.Contains(BuildLeagueSeasonKey(x.LeagueApiId, x.Season)))
             .Where(x => shouldSync("fixtures_repair", x.LeagueApiId, x.Season, options.GetRepairInterval()))

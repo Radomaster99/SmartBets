@@ -2530,15 +2530,15 @@ Operational strategy:
 - avoid full-resync bursts
 - prefer one global live heartbeat call over many per-league live polls
 - refresh odds only for league-seasons with near fixtures
-- degrade non-critical work early when quota becomes tight
+- keep quota telemetry visible, but do not preemptively stop automation because of internal daily safety guards
 
 Quota guard defaults:
 - `LowDailyRemainingThreshold = 10000`
 - `CriticalDailyRemainingThreshold = 2500`
 
 Core automation daily budget defaults:
-- `AutomationDailyBudget = 70000`
-- `ProviderDailySafetyBuffer = 5000`
+- `AutomationDailyBudget = 75000`
+- `ProviderDailySafetyBuffer = 0`
 - `CatalogRefreshDailyBudget = 500`
 - `TeamsRollingDailyBudget = 9000`
 - `StandingsRollingDailyBudget = 6000`
@@ -2547,12 +2547,10 @@ Core automation daily budget defaults:
 - `OddsLiveDailyBudget = 18000`
 - `RepairDailyBudget = 3500`
 
-When quota gets tighter:
-- team rolling sync slows down first
-- baseline fixture rolling sync slows down next
-- hot fixtures and pre-match odds get smaller per-cycle batches
-- live odds batch size is reduced
-- the live heartbeat remains the cheapest last-resort live refresh
+Current behavior:
+- quota telemetry and low/critical modes are still tracked
+- request pacing can still slow down a little in low/critical mode
+- the automation worker does not preemptively stop jobs just because the internal daily budget or safety buffer has been reached
 
 ### 29.6 New Catalog Reference Endpoint Flow
 

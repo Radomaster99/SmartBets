@@ -48,24 +48,13 @@ public class CoreAutomationQuotaManager
             if (!_jobs.TryGetValue(job, out var state))
                 return 0;
 
-            var jobRemaining = Math.Max(0, GetDailyBudget(job, options) - state.UsedToday);
-            var automationRemaining = Math.Max(0, options.GetAutomationDailyBudget() - _jobs.Values.Sum(x => x.UsedToday));
+            _ = state;
+            _ = options;
+            _ = apiQuotaSnapshot;
 
-            var providerRemainingGuarded = int.MaxValue;
-            if (apiQuotaSnapshot.RequestsDailyRemaining.HasValue)
-            {
-                providerRemainingGuarded = Math.Max(
-                    0,
-                    apiQuotaSnapshot.RequestsDailyRemaining.Value - options.GetProviderDailySafetyBuffer());
-            }
-
-            return new[]
-            {
-                desiredRequests,
-                jobRemaining,
-                automationRemaining,
-                providerRemainingGuarded
-            }.Min();
+            // Keep runtime accounting and telemetry, but do not preemptively stop
+            // background work because of internal daily budgets or provider safety buffers.
+            return desiredRequests;
         }
     }
 
