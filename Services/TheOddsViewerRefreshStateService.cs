@@ -12,15 +12,21 @@ public class TheOddsViewerRefreshStateService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<TheOddsApiOptions> _optionsMonitor;
+    private readonly ILogger<TheOddsViewerRefreshStateService> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private CachedViewerRefreshState? _cache;
+    private bool? _fallbackLiveOddsHeartbeatEnabled;
+    private DateTime? _fallbackUpdatedAtUtc;
+    private string? _fallbackUpdatedBy;
 
     public TheOddsViewerRefreshStateService(
         IServiceScopeFactory scopeFactory,
-        IOptionsMonitor<TheOddsApiOptions> optionsMonitor)
+        IOptionsMonitor<TheOddsApiOptions> optionsMonitor,
+        ILogger<TheOddsViewerRefreshStateService> logger)
     {
         _scopeFactory = scopeFactory;
         _optionsMonitor = optionsMonitor;
+        _logger = logger;
     }
 
     public async Task<TheOddsViewerRefreshStateSnapshot> GetStateAsync(CancellationToken cancellationToken = default)
@@ -38,14 +44,35 @@ public class TheOddsViewerRefreshStateService
             if (cached is not null && cached.ExpiresAtUtc > nowUtc)
                 return cached.Snapshot;
 
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            TheOddsViewerRefreshStateSnapshot snapshot;
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            var setting = await dbContext.TheOddsRuntimeSettings
-                .AsNoTracking()
-                .SingleOrDefaultAsync(x => x.SettingKey == ViewerHeartbeatSettingKey, cancellationToken);
+                var setting = await dbContext.TheOddsRuntimeSettings
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.SettingKey == ViewerHeartbeatSettingKey, cancellationToken);
 
-            var snapshot = BuildSnapshot(setting);
+                snapshot = BuildSnapshot(setting);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                snapshot = BuildSnapshot(
+                    null,
+                    _fallbackLiveOddsHeartbeatEnabled,
+                    _fallbackUpdatedAtUtc,
+                    _fallbackUpdatedBy);
+
+                _logger.LogWarning(
+                    ex,
+                    "Falling back to in-memory The Odds viewer refresh state. The runtime settings table may not be available yet.");
+            }
+
             _cache = new CachedViewerRefreshState(snapshot, nowUtc.Add(CacheTtl));
             return snapshot;
         }
@@ -63,30 +90,56 @@ public class TheOddsViewerRefreshStateService
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var nowUtc = DateTime.UtcNow;
+            var normalizedUpdatedBy = NormalizeUpdatedBy(updatedBy);
+            TheOddsViewerRefreshStateSnapshot snapshot;
 
-            var setting = await dbContext.TheOddsRuntimeSettings
-                .SingleOrDefaultAsync(x => x.SettingKey == ViewerHeartbeatSettingKey, cancellationToken);
-
-            if (setting is null)
+            try
             {
-                setting = new TheOddsRuntimeSetting
-                {
-                    SettingKey = ViewerHeartbeatSettingKey
-                };
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                dbContext.TheOddsRuntimeSettings.Add(setting);
+                var setting = await dbContext.TheOddsRuntimeSettings
+                    .SingleOrDefaultAsync(x => x.SettingKey == ViewerHeartbeatSettingKey, cancellationToken);
+
+                if (setting is null)
+                {
+                    setting = new TheOddsRuntimeSetting
+                    {
+                        SettingKey = ViewerHeartbeatSettingKey
+                    };
+
+                    dbContext.TheOddsRuntimeSettings.Add(setting);
+                }
+
+                setting.BoolValue = enabled;
+                setting.UpdatedAtUtc = nowUtc;
+                setting.UpdatedBy = normalizedUpdatedBy;
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+                snapshot = BuildSnapshot(setting);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _fallbackLiveOddsHeartbeatEnabled = enabled;
+                _fallbackUpdatedAtUtc = nowUtc;
+                _fallbackUpdatedBy = normalizedUpdatedBy;
+
+                snapshot = BuildSnapshot(
+                    null,
+                    _fallbackLiveOddsHeartbeatEnabled,
+                    _fallbackUpdatedAtUtc,
+                    _fallbackUpdatedBy);
+
+                _logger.LogWarning(
+                    ex,
+                    "Failed to persist The Odds viewer refresh state. Using in-memory fallback on this app instance.");
             }
 
-            setting.BoolValue = enabled;
-            setting.UpdatedAtUtc = nowUtc;
-            setting.UpdatedBy = NormalizeUpdatedBy(updatedBy);
-
-            await dbContext.SaveChangesAsync(cancellationToken);
-
-            var snapshot = BuildSnapshot(setting);
             _cache = new CachedViewerRefreshState(snapshot, nowUtc.Add(CacheTtl));
             return snapshot;
         }
@@ -96,10 +149,14 @@ public class TheOddsViewerRefreshStateService
         }
     }
 
-    private TheOddsViewerRefreshStateSnapshot BuildSnapshot(TheOddsRuntimeSetting? setting)
+    private TheOddsViewerRefreshStateSnapshot BuildSnapshot(
+        TheOddsRuntimeSetting? setting,
+        bool? liveOddsHeartbeatEnabledOverride = null,
+        DateTime? updatedAtUtcOverride = null,
+        string? updatedByOverride = null)
     {
         var options = _optionsMonitor.CurrentValue;
-        var liveOddsHeartbeatEnabled = setting?.BoolValue ?? true;
+        var liveOddsHeartbeatEnabled = liveOddsHeartbeatEnabledOverride ?? setting?.BoolValue ?? true;
         var providerEnabled = options.Enabled;
         var providerConfigured = options.IsConfigured();
         var configViewerDrivenRefreshEnabled = options.EnableViewerDrivenRefresh;
@@ -118,8 +175,8 @@ public class TheOddsViewerRefreshStateService
             options.EnableReadDrivenCatchUp,
             (int)options.GetViewerHeartbeatTtl().TotalSeconds,
             (int)options.GetViewerRefreshInterval().TotalSeconds,
-            setting?.UpdatedAtUtc,
-            setting?.UpdatedBy);
+            updatedAtUtcOverride ?? setting?.UpdatedAtUtc,
+            updatedByOverride ?? setting?.UpdatedBy);
     }
 
     private static string? NormalizeUpdatedBy(string? updatedBy)

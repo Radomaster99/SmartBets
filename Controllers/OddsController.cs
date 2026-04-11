@@ -227,6 +227,7 @@ public class OddsController : ControllerBase
 
         return Ok(new TheOddsViewerConfigDto
         {
+            ViewerDrivenRefreshEnabled = state.LiveOddsHeartbeatEnabled,
             LiveOddsHeartbeatEnabled = state.LiveOddsHeartbeatEnabled,
             TheOddsProviderEnabled = state.TheOddsProviderEnabled,
             TheOddsProviderConfigured = state.TheOddsProviderConfigured,
@@ -262,6 +263,7 @@ public class OddsController : ControllerBase
             AcceptedFixtureIds = result.AcceptedFixtureIds,
             ActiveFixtureIds = result.ActiveFixtureIds,
             TouchedAtUtc = result.TouchedAtUtc,
+            ViewerDrivenRefreshEnabled = state.LiveOddsHeartbeatEnabled,
             ViewerHeartbeatTtlSeconds = (int)result.Ttl.TotalSeconds,
             LiveOddsHeartbeatEnabled = state.LiveOddsHeartbeatEnabled,
             EffectiveViewerDrivenRefreshEnabled = state.EffectiveViewerDrivenRefreshEnabled,

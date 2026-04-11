@@ -11,6 +11,7 @@ public class TheOddsViewerHeartbeatResponseDto
     public int AcceptedFixtureIds { get; set; }
     public int ActiveFixtureIds { get; set; }
     public DateTime TouchedAtUtc { get; set; }
+    public bool ViewerDrivenRefreshEnabled { get; set; }
     public int ViewerHeartbeatTtlSeconds { get; set; }
     public bool LiveOddsHeartbeatEnabled { get; set; }
     public bool EffectiveViewerDrivenRefreshEnabled { get; set; }
@@ -19,6 +20,7 @@ public class TheOddsViewerHeartbeatResponseDto
 
 public class TheOddsViewerConfigDto
 {
+    public bool ViewerDrivenRefreshEnabled { get; set; }
     public bool LiveOddsHeartbeatEnabled { get; set; }
     public bool TheOddsProviderEnabled { get; set; }
     public bool TheOddsProviderConfigured { get; set; }
