@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<LiveOdd> LiveOdds => Set<LiveOdd>();
     public DbSet<TheOddsLiveOdd> TheOddsLiveOdds => Set<TheOddsLiveOdd>();
     public DbSet<TheOddsLeagueMapping> TheOddsLeagueMappings => Set<TheOddsLeagueMapping>();
+    public DbSet<TheOddsRuntimeSetting> TheOddsRuntimeSettings => Set<TheOddsRuntimeSetting>();
     public DbSet<PreMatchOdd> PreMatchOdds => Set<PreMatchOdd>();
     public DbSet<OddsOpenClose> OddsOpenCloses => Set<OddsOpenClose>();
     public DbSet<OddsMovement> OddsMovements => Set<OddsMovement>();
@@ -977,6 +978,33 @@ public class AppDbContext : DbContext
 
             entity.HasIndex(x => x.TheOddsSportKey);
             entity.HasIndex(x => x.ResolutionSource);
+        });
+
+        modelBuilder.Entity<TheOddsRuntimeSetting>(entity =>
+        {
+            entity.ToTable("the_odds_runtime_settings");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.SettingKey)
+                .HasColumnName("setting_key")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.BoolValue)
+                .HasColumnName("bool_value");
+
+            entity.Property(x => x.UpdatedAtUtc)
+                .HasColumnName("updated_at_utc");
+
+            entity.Property(x => x.UpdatedBy)
+                .HasColumnName("updated_by")
+                .HasMaxLength(200);
+
+            entity.HasIndex(x => x.SettingKey)
+                .IsUnique();
         });
 
         modelBuilder.Entity<PreMatchOdd>(entity =>

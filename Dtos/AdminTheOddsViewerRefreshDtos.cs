@@ -1,23 +1,11 @@
 namespace SmartBets.Dtos;
 
-public class TheOddsViewerHeartbeatRequestDto
+public class AdminTheOddsViewerRefreshUpdateRequestDto
 {
-    public IReadOnlyList<long> FixtureIds { get; set; } = Array.Empty<long>();
-}
-
-public class TheOddsViewerHeartbeatResponseDto
-{
-    public int ReceivedFixtureIds { get; set; }
-    public int AcceptedFixtureIds { get; set; }
-    public int ActiveFixtureIds { get; set; }
-    public DateTime TouchedAtUtc { get; set; }
-    public int ViewerHeartbeatTtlSeconds { get; set; }
     public bool LiveOddsHeartbeatEnabled { get; set; }
-    public bool EffectiveViewerDrivenRefreshEnabled { get; set; }
-    public bool HeartbeatAccepted { get; set; }
 }
 
-public class TheOddsViewerConfigDto
+public class AdminTheOddsViewerRefreshStateDto
 {
     public bool LiveOddsHeartbeatEnabled { get; set; }
     public bool TheOddsProviderEnabled { get; set; }
@@ -27,5 +15,7 @@ public class TheOddsViewerConfigDto
     public bool ReadDrivenCatchUpEnabled { get; set; }
     public int ViewerHeartbeatTtlSeconds { get; set; }
     public int ViewerRefreshIntervalSeconds { get; set; }
+    public int ActiveFixtureIds { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
+    public string? UpdatedBy { get; set; }
 }

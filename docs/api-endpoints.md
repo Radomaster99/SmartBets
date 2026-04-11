@@ -2871,6 +2871,44 @@ Important separation:
 - API-Football still owns live fixture status, score and finished-state tracking
 - The Odds API is used only for live odds refresh
 
+Global control endpoints:
+
+`GET /api/odds/live/viewers/config`
+
+Purpose:
+- read endpoint for the current shared backend heartbeat flag
+- this is the endpoint normal frontend pages should read on load before starting viewer keepalive
+
+Response:
+- `LiveOddsHeartbeatEnabled`
+- `TheOddsProviderEnabled`
+- `TheOddsProviderConfigured`
+- `ConfigViewerDrivenRefreshEnabled`
+- `EffectiveViewerDrivenRefreshEnabled`
+- `ReadDrivenCatchUpEnabled`
+- `ViewerHeartbeatTtlSeconds`
+- `ViewerRefreshIntervalSeconds`
+- `UpdatedAtUtc`
+
+Admin endpoints:
+- `GET /api/admin/odds/live/the-odds/viewer-refresh`
+- `PATCH /api/admin/odds/live/the-odds/viewer-refresh`
+
+`PATCH /api/admin/odds/live/the-odds/viewer-refresh` body:
+- `LiveOddsHeartbeatEnabled`
+
+Admin response additionally contains:
+- `ActiveFixtureIds`
+- `UpdatedBy`
+
+Global control behavior:
+- the backend is the source of truth for whether viewer heartbeats are currently allowed
+- if the admin disables the shared flag, normal frontend pages should stop sending keepalive
+- disabling the flag also clears the current in-memory active fixture registry on the running instance
+- this global flag affects only The Odds viewer heartbeat flow
+- it does not change API-Football live status refresh
+- it does not force read-driven catch-up on or off by itself
+
 New heartbeat endpoint:
 
 `POST /api/odds/live/viewers/heartbeat`
@@ -2881,6 +2919,7 @@ Request body:
 Behavior:
 - the frontend should send only the fixtures that are actually visible on screen
 - a practical frontend implementation is `IntersectionObserver` + periodic heartbeat
+- the frontend should first read `GET /api/odds/live/viewers/config` and only start heartbeat when `EffectiveViewerDrivenRefreshEnabled = true`
 - fixtures stay active only for a short TTL window controlled by `ViewerHeartbeatTtlSeconds`
 - the backend refresh worker then polls The Odds API only for:
   - active viewed fixtures
@@ -2889,6 +2928,8 @@ Behavior:
 - even with active viewers, each league-season is throttled by `MinLeagueSyncIntervalSeconds`
 
 Recommended frontend behavior:
+- on page load, read `GET /api/odds/live/viewers/config`
+- only enable the heartbeat hook when the backend says `EffectiveViewerDrivenRefreshEnabled = true`
 - send heartbeats every `25..30` seconds
 - send only visible live fixtures
 - stop heartbeats when the tab is hidden
@@ -2908,6 +2949,14 @@ Response:
 - `ActiveFixtureIds`
 - `TouchedAtUtc`
 - `ViewerHeartbeatTtlSeconds`
+- `LiveOddsHeartbeatEnabled`
+- `EffectiveViewerDrivenRefreshEnabled`
+- `HeartbeatAccepted`
+
+Interpretation notes:
+- if `HeartbeatAccepted = false`, the frontend should stop relying on this request as a refresh trigger
+- if `LiveOddsHeartbeatEnabled = false`, the shared backend admin switch is currently off
+- if `LiveOddsHeartbeatEnabled = true` but `EffectiveViewerDrivenRefreshEnabled = false`, the static backend config or provider setup is preventing viewer-driven refresh at the moment
 
 ### 32.5 Read Path Impact
 
@@ -3075,6 +3124,7 @@ Each suggestion contains:
 `GET /api/debug/db` now also returns:
 - `TheOddsLiveOdds`
 - `TheOddsLeagueMappings`
+- `TheOddsRuntimeSettings`
 
 ### 33.5 Database Apply
 
@@ -3083,3 +3133,34 @@ EF migration:
 
 SQL fallback:
 - `sql/stage12_the_odds_league_mappings.sql`
+
+## 34. Stage 13: The Odds Global Viewer Refresh Control
+
+Stage 13 adds a persisted backend switch for the shared viewer heartbeat flow.
+
+Purpose:
+- lets the admin panel enable or disable The Odds viewer-driven heartbeat globally for all users
+- keeps the backend as the single source of truth
+- avoids relying only on local browser state inside the admin panel
+
+### 34.1 New Table
+
+New table:
+- `the_odds_runtime_settings`
+
+Current setting key used:
+- `viewer_heartbeat_enabled`
+
+Stored fields:
+- `SettingKey`
+- `BoolValue`
+- `UpdatedAtUtc`
+- `UpdatedBy`
+
+### 34.2 Database Apply
+
+EF migration:
+- `Migrations/20260411115043_Stage13TheOddsViewerRefreshState.cs`
+
+SQL fallback:
+- `sql/stage13_the_odds_viewer_refresh_state.sql`

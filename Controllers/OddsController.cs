@@ -16,6 +16,7 @@ public class OddsController : ControllerBase
     private readonly LiveOddsService _liveOddsService;
     private readonly TheOddsLiveOddsService _theOddsLiveOddsService;
     private readonly TheOddsViewerActivityService _theOddsViewerActivityService;
+    private readonly TheOddsViewerRefreshStateService _theOddsViewerRefreshStateService;
     private readonly OddsAnalyticsService _oddsAnalyticsService;
     private readonly SyncStateService _syncStateService;
     private readonly AppDbContext _dbContext;
@@ -26,6 +27,7 @@ public class OddsController : ControllerBase
         LiveOddsService liveOddsService,
         TheOddsLiveOddsService theOddsLiveOddsService,
         TheOddsViewerActivityService theOddsViewerActivityService,
+        TheOddsViewerRefreshStateService theOddsViewerRefreshStateService,
         OddsAnalyticsService oddsAnalyticsService,
         SyncStateService syncStateService)
     {
@@ -34,6 +36,7 @@ public class OddsController : ControllerBase
         _liveOddsService = liveOddsService;
         _theOddsLiveOddsService = theOddsLiveOddsService;
         _theOddsViewerActivityService = theOddsViewerActivityService;
+        _theOddsViewerRefreshStateService = theOddsViewerRefreshStateService;
         _oddsAnalyticsService = oddsAnalyticsService;
         _syncStateService = syncStateService;
     }
@@ -217,12 +220,41 @@ public class OddsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("live/viewers/config")]
+    public async Task<IActionResult> GetTheOddsViewerConfig(CancellationToken cancellationToken = default)
+    {
+        var state = await _theOddsViewerRefreshStateService.GetStateAsync(cancellationToken);
+
+        return Ok(new TheOddsViewerConfigDto
+        {
+            LiveOddsHeartbeatEnabled = state.LiveOddsHeartbeatEnabled,
+            TheOddsProviderEnabled = state.TheOddsProviderEnabled,
+            TheOddsProviderConfigured = state.TheOddsProviderConfigured,
+            ConfigViewerDrivenRefreshEnabled = state.ConfigViewerDrivenRefreshEnabled,
+            EffectiveViewerDrivenRefreshEnabled = state.EffectiveViewerDrivenRefreshEnabled,
+            ReadDrivenCatchUpEnabled = state.ReadDrivenCatchUpEnabled,
+            ViewerHeartbeatTtlSeconds = state.ViewerHeartbeatTtlSeconds,
+            ViewerRefreshIntervalSeconds = state.ViewerRefreshIntervalSeconds,
+            UpdatedAtUtc = state.UpdatedAtUtc
+        });
+    }
+
     [HttpPost("live/viewers/heartbeat")]
-    public IActionResult HeartbeatTheOddsViewers(
-        [FromBody] TheOddsViewerHeartbeatRequestDto request)
+    public async Task<IActionResult> HeartbeatTheOddsViewers(
+        [FromBody] TheOddsViewerHeartbeatRequestDto request,
+        CancellationToken cancellationToken = default)
     {
         var receivedFixtureIds = request.FixtureIds?.Count ?? 0;
-        var result = _theOddsViewerActivityService.TouchFixtures(request.FixtureIds ?? Array.Empty<long>());
+        var state = await _theOddsViewerRefreshStateService.GetStateAsync(cancellationToken);
+
+        var heartbeatAccepted = state.EffectiveViewerDrivenRefreshEnabled;
+        var result = heartbeatAccepted
+            ? _theOddsViewerActivityService.TouchFixtures(request.FixtureIds ?? Array.Empty<long>())
+            : new TheOddsViewerHeartbeatResult(
+                0,
+                _theOddsViewerActivityService.GetActiveFixtureCount(),
+                DateTime.UtcNow,
+                TimeSpan.FromSeconds(state.ViewerHeartbeatTtlSeconds));
 
         return Ok(new TheOddsViewerHeartbeatResponseDto
         {
@@ -230,7 +262,10 @@ public class OddsController : ControllerBase
             AcceptedFixtureIds = result.AcceptedFixtureIds,
             ActiveFixtureIds = result.ActiveFixtureIds,
             TouchedAtUtc = result.TouchedAtUtc,
-            ViewerHeartbeatTtlSeconds = (int)result.Ttl.TotalSeconds
+            ViewerHeartbeatTtlSeconds = (int)result.Ttl.TotalSeconds,
+            LiveOddsHeartbeatEnabled = state.LiveOddsHeartbeatEnabled,
+            EffectiveViewerDrivenRefreshEnabled = state.EffectiveViewerDrivenRefreshEnabled,
+            HeartbeatAccepted = heartbeatAccepted
         });
     }
 

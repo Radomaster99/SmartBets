@@ -13,17 +13,20 @@ public class TheOddsViewerDrivenRefreshBackgroundService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TheOddsViewerActivityService _viewerActivityService;
+    private readonly TheOddsViewerRefreshStateService _viewerRefreshStateService;
     private readonly IOptionsMonitor<TheOddsApiOptions> _optionsMonitor;
     private readonly ILogger<TheOddsViewerDrivenRefreshBackgroundService> _logger;
 
     public TheOddsViewerDrivenRefreshBackgroundService(
         IServiceScopeFactory scopeFactory,
         TheOddsViewerActivityService viewerActivityService,
+        TheOddsViewerRefreshStateService viewerRefreshStateService,
         IOptionsMonitor<TheOddsApiOptions> optionsMonitor,
         ILogger<TheOddsViewerDrivenRefreshBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
         _viewerActivityService = viewerActivityService;
+        _viewerRefreshStateService = viewerRefreshStateService;
         _optionsMonitor = optionsMonitor;
         _logger = logger;
     }
@@ -39,7 +42,8 @@ public class TheOddsViewerDrivenRefreshBackgroundService : BackgroundService
 
             try
             {
-                if (options.Enabled && options.EnableViewerDrivenRefresh && options.IsConfigured())
+                var viewerRefreshState = await _viewerRefreshStateService.GetStateAsync(stoppingToken);
+                if (viewerRefreshState.EffectiveViewerDrivenRefreshEnabled)
                 {
                     using var scope = _scopeFactory.CreateScope();
                     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();

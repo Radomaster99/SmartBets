@@ -60,7 +60,8 @@ public class DebugController : ControllerBase
             SupportedLeagues = await _dbContext.SupportedLeagues.CountAsync(cancellationToken),
             LiveOdds = await _dbContext.LiveOdds.CountAsync(cancellationToken),
             TheOddsLiveOdds = await _dbContext.TheOddsLiveOdds.CountAsync(cancellationToken),
-            TheOddsLeagueMappings = await _dbContext.TheOddsLeagueMappings.CountAsync(cancellationToken)
+            TheOddsLeagueMappings = await _dbContext.TheOddsLeagueMappings.CountAsync(cancellationToken),
+            TheOddsRuntimeSettings = await _dbContext.TheOddsRuntimeSettings.CountAsync(cancellationToken)
         });
     }
 

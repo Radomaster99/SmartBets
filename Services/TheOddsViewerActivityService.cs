@@ -57,6 +57,11 @@ public class TheOddsViewerActivityService
         return _fixtureLastSeenUtc.Count;
     }
 
+    public void ClearActiveFixtures()
+    {
+        _fixtureLastSeenUtc.Clear();
+    }
+
     private void PruneExpired(DateTime nowUtc, TimeSpan ttl)
     {
         var cutoffUtc = nowUtc.Subtract(ttl);

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,13 +20,53 @@ public class AdminLiveOddsController : ControllerBase
 
     private readonly AppDbContext _dbContext;
     private readonly TheOddsLiveOddsService _theOddsLiveOddsService;
+    private readonly TheOddsViewerActivityService _theOddsViewerActivityService;
+    private readonly TheOddsViewerRefreshStateService _theOddsViewerRefreshStateService;
 
     public AdminLiveOddsController(
         AppDbContext dbContext,
-        TheOddsLiveOddsService theOddsLiveOddsService)
+        TheOddsLiveOddsService theOddsLiveOddsService,
+        TheOddsViewerActivityService theOddsViewerActivityService,
+        TheOddsViewerRefreshStateService theOddsViewerRefreshStateService)
     {
         _dbContext = dbContext;
         _theOddsLiveOddsService = theOddsLiveOddsService;
+        _theOddsViewerActivityService = theOddsViewerActivityService;
+        _theOddsViewerRefreshStateService = theOddsViewerRefreshStateService;
+    }
+
+    [HttpGet("viewer-refresh")]
+    public async Task<IActionResult> GetViewerRefreshState(CancellationToken cancellationToken = default)
+    {
+        var state = await _theOddsViewerRefreshStateService.GetStateAsync(cancellationToken);
+        return Ok(MapViewerRefreshState(state));
+    }
+
+    [HttpPatch("viewer-refresh")]
+    public async Task<IActionResult> UpdateViewerRefreshState(
+        [FromBody] AdminTheOddsViewerRefreshUpdateRequestDto? request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+            return BadRequest("Request body is required.");
+
+        var updatedBy = User.FindFirstValue(ClaimTypes.Name) ??
+                        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                        User.FindFirstValue("sub") ??
+                        User.FindFirstValue("unique_name") ??
+                        "admin";
+
+        var state = await _theOddsViewerRefreshStateService.SetLiveOddsHeartbeatEnabledAsync(
+            request.LiveOddsHeartbeatEnabled,
+            updatedBy,
+            cancellationToken);
+
+        if (!request.LiveOddsHeartbeatEnabled)
+        {
+            _theOddsViewerActivityService.ClearActiveFixtures();
+        }
+
+        return Ok(MapViewerRefreshState(state));
     }
 
     [HttpPost("refresh-fixture")]
@@ -189,5 +230,23 @@ public class AdminLiveOddsController : ControllerBase
             Sync = sync,
             Items = liveFixtures
         });
+    }
+
+    private AdminTheOddsViewerRefreshStateDto MapViewerRefreshState(TheOddsViewerRefreshStateSnapshot state)
+    {
+        return new AdminTheOddsViewerRefreshStateDto
+        {
+            LiveOddsHeartbeatEnabled = state.LiveOddsHeartbeatEnabled,
+            TheOddsProviderEnabled = state.TheOddsProviderEnabled,
+            TheOddsProviderConfigured = state.TheOddsProviderConfigured,
+            ConfigViewerDrivenRefreshEnabled = state.ConfigViewerDrivenRefreshEnabled,
+            EffectiveViewerDrivenRefreshEnabled = state.EffectiveViewerDrivenRefreshEnabled,
+            ReadDrivenCatchUpEnabled = state.ReadDrivenCatchUpEnabled,
+            ViewerHeartbeatTtlSeconds = state.ViewerHeartbeatTtlSeconds,
+            ViewerRefreshIntervalSeconds = state.ViewerRefreshIntervalSeconds,
+            ActiveFixtureIds = _theOddsViewerActivityService.GetActiveFixtureCount(),
+            UpdatedAtUtc = state.UpdatedAtUtc,
+            UpdatedBy = state.UpdatedBy
+        };
     }
 }

@@ -199,6 +199,7 @@ builder.Services.AddScoped<PreMatchOddsService>();
 builder.Services.AddScoped<TheOddsSportKeyResolverService>();
 builder.Services.AddScoped<TheOddsLiveOddsService>();
 builder.Services.AddSingleton<TheOddsViewerActivityService>();
+builder.Services.AddSingleton<TheOddsViewerRefreshStateService>();
 builder.Services.AddScoped<LiveOddsService>();
 builder.Services.AddScoped<OddsAnalyticsService>();
 builder.Services.AddScoped<DiscoveryService>();
