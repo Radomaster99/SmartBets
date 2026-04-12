@@ -287,7 +287,11 @@ public class LiveOddsService
 
                         result.SnapshotsProcessed++;
 
-                        var normalizedOutcome = NormalizeNullable(value.Value) ?? string.Empty;
+                        var normalizedOutcome = NormalizeNullable(
+                            MatchOutcomeNormalizer.Canonicalize(
+                                value.Value,
+                                fixture.HomeTeamName,
+                                fixture.AwayTeamName)) ?? string.Empty;
                         var normalizedLine = NormalizeNullable(value.Handicap);
                         var stopped = value.Suspended ?? apiBet.Stopped ?? apiBookmaker.Stopped ?? GetFixtureStopped(remoteFixture);
                         var blocked = apiBet.Blocked ?? apiBookmaker.Blocked ?? GetFixtureBlocked(remoteFixture);
@@ -498,7 +502,10 @@ public class LiveOddsService
                     .ThenBy(x => x.Line)
                     .Select(x => new LiveOddsValueDto
                     {
-                        OutcomeLabel = x.OutcomeLabel,
+                        OutcomeLabel = MatchOutcomeNormalizer.Canonicalize(
+                            x.OutcomeLabel,
+                            fixture.HomeTeamName,
+                            fixture.AwayTeamName),
                         Line = x.Line,
                         Odd = x.Odd,
                         IsMain = x.IsMain,
@@ -700,9 +707,15 @@ public class LiveOddsService
 
         var preMatchLatestRows = preMatchRows
             .GroupBy(x => new { x.FixtureId, x.ApiBookmakerId })
-            .Select(group => group
-                .OrderByDescending(x => x.CollectedAtUtc)
-                .First())
+            .Select(group =>
+            {
+                var ordered = group
+                    .OrderByDescending(x => x.CollectedAtUtc)
+                    .ThenBy(x => x.Bookmaker)
+                    .ToList();
+
+                return ordered.FirstOrDefault(IsCompletePreMatchSummaryRow) ?? ordered[0];
+            })
             .ToList();
 
         var result = fixtures
@@ -1046,7 +1059,7 @@ public class LiveOddsService
             }
         }
 
-        return HasAnySummaryValue(summary)
+        return HasCompleteSummaryValue(summary)
             ? summary
             : null;
     }
@@ -1088,7 +1101,7 @@ public class LiveOddsService
                 });
         }
 
-        return HasAnySummaryValue(summary)
+        return HasCompleteSummaryValue(summary)
             ? summary
             : null;
     }
@@ -1116,10 +1129,10 @@ public class LiveOddsService
         }
     }
 
-    private static bool HasAnySummaryValue(FixtureLiveOddsSummaryDto summary)
+    private static bool HasCompleteSummaryValue(FixtureLiveOddsSummaryDto summary)
     {
-        return summary.BestHomeOdd.HasValue ||
-               summary.BestDrawOdd.HasValue ||
+        return summary.BestHomeOdd.HasValue &&
+               summary.BestDrawOdd.HasValue &&
                summary.BestAwayOdd.HasValue;
     }
 
@@ -1170,45 +1183,22 @@ public class LiveOddsService
             }
         }
 
-        return dto.HomeOdd.HasValue || dto.DrawOdd.HasValue || dto.AwayOdd.HasValue;
+        return dto.HomeOdd.HasValue && dto.DrawOdd.HasValue && dto.AwayOdd.HasValue;
     }
 
     private static bool IsHomeOutcome(string? outcomeLabel, string homeTeamName)
     {
-        if (string.IsNullOrWhiteSpace(outcomeLabel))
-            return false;
-
-        var normalized = NormalizeOutcome(outcomeLabel);
-        var normalizedHomeTeam = NormalizeOutcome(homeTeamName);
-
-        return normalized is "1" or "HOME" ||
-               normalized == normalizedHomeTeam;
+        return MatchOutcomeNormalizer.IsHomeOutcome(outcomeLabel, homeTeamName);
     }
 
     private static bool IsDrawOutcome(string? outcomeLabel)
     {
-        if (string.IsNullOrWhiteSpace(outcomeLabel))
-            return false;
-
-        var normalized = NormalizeOutcome(outcomeLabel);
-        return normalized is "X" or "DRAW" or "TIE";
+        return MatchOutcomeNormalizer.IsDrawOutcome(outcomeLabel);
     }
 
     private static bool IsAwayOutcome(string? outcomeLabel, string awayTeamName)
     {
-        if (string.IsNullOrWhiteSpace(outcomeLabel))
-            return false;
-
-        var normalized = NormalizeOutcome(outcomeLabel);
-        var normalizedAwayTeam = NormalizeOutcome(awayTeamName);
-
-        return normalized is "2" or "AWAY" ||
-               normalized == normalizedAwayTeam;
-    }
-
-    private static string NormalizeOutcome(string value)
-    {
-        return value.Trim().ToUpperInvariant();
+        return MatchOutcomeNormalizer.IsAwayOutcome(outcomeLabel, awayTeamName);
     }
 
     private async Task<IReadOnlyList<long>> GetStoredMatchWinnerLiveBetIdsAsync(CancellationToken cancellationToken)
@@ -1577,6 +1567,13 @@ public class LiveOddsService
         public decimal? DrawOdd { get; set; }
         public decimal? AwayOdd { get; set; }
         public DateTime CollectedAtUtc { get; set; }
+    }
+
+    private static bool IsCompletePreMatchSummaryRow(PreMatchOddsSummaryRow row)
+    {
+        return row.HomeOdd.HasValue &&
+               row.DrawOdd.HasValue &&
+               row.AwayOdd.HasValue;
     }
 
     private sealed record LeagueSeasonScope(long LeagueApiId, int Season);

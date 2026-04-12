@@ -140,10 +140,20 @@ public class PreMatchOddsService
 
         return odds
             .GroupBy(x => $"{x.ApiBookmakerId}:{x.MarketName}", StringComparer.OrdinalIgnoreCase)
-            .Select(x => x
-                .OrderByDescending(y => y.CollectedAtUtc)
-                .ThenBy(y => y.Bookmaker)
-                .First())
+            .Select(x =>
+            {
+                var ordered = x
+                    .OrderByDescending(y => y.CollectedAtUtc)
+                    .ThenBy(y => y.Bookmaker)
+                    .ToList();
+
+                if (string.Equals(ordered[0].MarketName, DefaultMarketName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ordered.FirstOrDefault(IsCompleteMatchWinnerOdds) ?? ordered[0];
+                }
+
+                return ordered[0];
+            })
             .OrderBy(x => x.Bookmaker)
             .ThenBy(x => x.MarketName)
             .ToList();
@@ -275,31 +285,27 @@ public class PreMatchOddsService
         if (bet is null)
             return false;
 
-        var normalizedHomeTeamName = NormalizeOutcomeLabel(homeTeamName);
-        var normalizedAwayTeamName = NormalizeOutcomeLabel(awayTeamName);
-
         foreach (var value in bet.Values)
         {
             if (!TryParseOdd(value.Odd, out var oddValue))
                 continue;
 
-            var normalizedOutcome = NormalizeOutcomeLabel(value.Value);
-            if (string.IsNullOrWhiteSpace(normalizedOutcome))
+            if (string.IsNullOrWhiteSpace(value.Value))
                 continue;
 
-            if (normalizedOutcome is "1" or "HOME" || normalizedOutcome == normalizedHomeTeamName)
+            if (MatchOutcomeNormalizer.IsHomeOutcome(value.Value, homeTeamName))
             {
                 homeOdd = oddValue;
                 continue;
             }
 
-            if (normalizedOutcome is "X" or "DRAW" or "TIE")
+            if (MatchOutcomeNormalizer.IsDrawOutcome(value.Value))
             {
                 drawOdd = oddValue;
                 continue;
             }
 
-            if (normalizedOutcome is "2" or "AWAY" || normalizedOutcome == normalizedAwayTeamName)
+            if (MatchOutcomeNormalizer.IsAwayOutcome(value.Value, awayTeamName))
             {
                 awayOdd = oddValue;
             }
@@ -317,16 +323,19 @@ public class PreMatchOddsService
             out odd);
     }
 
-    private static string NormalizeOutcomeLabel(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : value.Trim().ToUpperInvariant();
-    }
-
     private static string BuildSnapshotKey(long fixtureId, long apiBookmakerId, string marketName)
     {
         return $"{fixtureId}:{apiBookmakerId}:{marketName}".ToUpperInvariant();
+    }
+
+    private static bool IsCompleteThreeWayOdds(decimal? homeOdd, decimal? drawOdd, decimal? awayOdd)
+    {
+        return homeOdd.HasValue && drawOdd.HasValue && awayOdd.HasValue;
+    }
+
+    private static bool IsCompleteMatchWinnerOdds(OddDto odd)
+    {
+        return IsCompleteThreeWayOdds(odd.HomeOdd, odd.DrawOdd, odd.AwayOdd);
     }
 
     private async Task<OddsSyncResult> SyncOddsCoreAsync(
@@ -430,6 +439,13 @@ public class PreMatchOddsService
                         out var homeOdd,
                         out var drawOdd,
                         out var awayOdd))
+                {
+                    result.SnapshotsSkippedUnsupportedMarket++;
+                    continue;
+                }
+
+                if (string.Equals(normalizedMarketName, DefaultMarketName, StringComparison.OrdinalIgnoreCase) &&
+                    !IsCompleteThreeWayOdds(homeOdd, drawOdd, awayOdd))
                 {
                     result.SnapshotsSkippedUnsupportedMarket++;
                     continue;
