@@ -12,6 +12,7 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-EXPOSE 10000
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "SmartBets.dll"]
