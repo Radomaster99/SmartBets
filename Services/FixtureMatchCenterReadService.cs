@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
 using SmartBets.Dtos;
+using SmartBets.Entities;
 
 namespace SmartBets.Services;
 
@@ -73,6 +74,48 @@ public class FixtureMatchCenterReadService
             })
             .OrderBy(x => x.TeamApiId)
             .ToList();
+    }
+
+    public async Task<FixtureCornersDto> GetCornersAsync(Fixture fixture, CancellationToken cancellationToken = default)
+    {
+        var rows = await _dbContext.FixtureStatistics
+            .AsNoTracking()
+            .Where(x => x.FixtureId == fixture.Id && IsCornerStatisticType(x.Type))
+            .OrderByDescending(x => x.SyncedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        var homeRow = rows.FirstOrDefault(x => x.ApiTeamId == fixture.HomeTeam.ApiTeamId);
+        var awayRow = rows.FirstOrDefault(x => x.ApiTeamId == fixture.AwayTeam.ApiTeamId);
+
+        var homeCorners = ParseIntegerStatistic(homeRow?.Value);
+        var awayCorners = ParseIntegerStatistic(awayRow?.Value);
+
+        return new FixtureCornersDto
+        {
+            ApiFixtureId = fixture.ApiFixtureId,
+            SyncedAtUtc = rows.Select(x => (DateTime?)x.SyncedAtUtc).OrderByDescending(x => x).FirstOrDefault(),
+            HasData = homeRow is not null || awayRow is not null,
+            TotalCorners = homeCorners.HasValue && awayCorners.HasValue
+                ? homeCorners.Value + awayCorners.Value
+                : null,
+            Home = new FixtureCornersTeamDto
+            {
+                TeamId = fixture.HomeTeamId,
+                TeamApiId = fixture.HomeTeam.ApiTeamId,
+                TeamName = fixture.HomeTeam.Name,
+                TeamLogoUrl = fixture.HomeTeam.LogoUrl,
+                Corners = homeCorners
+            },
+            Away = new FixtureCornersTeamDto
+            {
+                TeamId = fixture.AwayTeamId,
+                TeamApiId = fixture.AwayTeam.ApiTeamId,
+                TeamName = fixture.AwayTeam.Name,
+                TeamLogoUrl = fixture.AwayTeam.LogoUrl,
+                Corners = awayCorners
+            }
+        };
     }
 
     public async Task<List<FixtureTeamLineupDto>> GetLineupsAsync(long fixtureId, CancellationToken cancellationToken = default)
@@ -211,5 +254,21 @@ public class FixtureMatchCenterReadService
             Position = lineup.PlayerPosition,
             Grid = lineup.PlayerGrid
         };
+    }
+
+    private static bool IsCornerStatisticType(string? type)
+    {
+        return !string.IsNullOrWhiteSpace(type) &&
+               type.Contains("corner", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int? ParseIntegerStatistic(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return int.TryParse(value.Trim(), out var parsed)
+            ? parsed
+            : null;
     }
 }

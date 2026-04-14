@@ -1051,6 +1051,7 @@ Recommended usage:
 - fixture detail -> `GET /api/fixtures/{apiFixtureId}`
 - fixture odds -> `GET /api/fixtures/{apiFixtureId}/odds`
 - best odds -> `GET /api/fixtures/{apiFixtureId}/best-odds`
+- fixture corners -> `GET /api/fixtures/{apiFixtureId}/corners`
 - standings -> `GET /api/standings`
 - sync freshness -> `GET /api/sync-status`
 
@@ -1078,10 +1079,29 @@ Read endpoint-и като:
 - `/api/fixtures`
 - `/api/fixtures/query`
 - `/api/fixtures/{apiFixtureId}`
+- `/api/fixtures/{apiFixtureId}/corners`
 - `/api/standings`
 - `/api/odds`
 
 четат от локалната база.
+
+### 15.4 Corners frontend usage
+
+Препоръчителен flow:
+- normal page load -> `GET /api/fixtures/{apiFixtureId}/corners`
+- ако `HasData = true`, frontend-ът рендерира `Home.Corners`, `Away.Corners` и по желание `TotalCorners`
+- ако `HasData = false`, UI може да покаже `N/A`, skeleton или бутон за admin refresh според контекста
+
+Кога да се ползва sync:
+- `POST /api/fixtures/{apiFixtureId}/sync-corners` е targeted refresh endpoint
+- подходящ е за admin/debug flow или когато изрично искаш да форсираш нов statistics fetch
+- не е препоръчително normal user page load да го вика автоматично
+
+Практически бележки:
+- corner данните идват от fixture statistics, не от odds слоя
+- endpoint-ът връща нормализиран contract, за да не търси frontend-ът `Corner Kicks` в generic statistics масив
+- `TotalCorners` е попълнен само когато и home, и away стойността са налични
+- `SyncedAtUtc` е timestamp на последния stored statistics snapshot, от който са извлечени корнерите
 
 ## 16. Текущи ограничения
 
@@ -1110,6 +1130,18 @@ GET /api/fixtures/123456?marketName=Match Winner
 
 ```http
 GET /api/fixtures/123456/odds?marketName=Match Winner&latestOnly=true
+```
+
+### 17.3.1 Fixture corners
+
+```http
+GET /api/fixtures/123456/corners
+```
+
+### 17.3.2 Fixture corners sync
+
+```http
+POST /api/fixtures/123456/sync-corners?force=true
 ```
 
 ### 17.4 Odds sync
@@ -1368,6 +1400,7 @@ Base route:
 Нови route-ове:
 - `GET /api/fixtures/{apiFixtureId}/events`
 - `GET /api/fixtures/{apiFixtureId}/statistics`
+- `GET /api/fixtures/{apiFixtureId}/corners`
 - `GET /api/fixtures/{apiFixtureId}/lineups`
 - `GET /api/fixtures/{apiFixtureId}/players`
 - `GET /api/fixtures/{apiFixtureId}/match-center`
@@ -1391,14 +1424,55 @@ Base route:
 - `Freshness.LastLineupsSyncedAtUtc`
 - `Freshness.LastPlayerStatisticsSyncedAtUtc`
 
+`GET /api/fixtures/{apiFixtureId}/corners`
+- convenience read endpoint over stored fixture statistics
+- returns a normalized home/away corners payload instead of the raw generic statistics list
+- reads only from the local database
+- if no stored corner rows exist yet, it still returns `200` with `HasData = false`
+
+Response:
+- `ApiFixtureId`
+- `SyncedAtUtc`
+- `HasData`
+- `TotalCorners`
+- `Home`
+- `Away`
+
+`Home` / `Away` contain:
+- `TeamId`
+- `TeamApiId`
+- `TeamName`
+- `TeamLogoUrl`
+- `Corners`
+
 ### 21.3 Нови sync endpoint-и
 
 - `POST /api/fixtures/{apiFixtureId}/sync-match-center`
+- `POST /api/fixtures/{apiFixtureId}/sync-corners`
 - `POST /api/fixtures/sync-live-match-center`
 
 `POST /api/fixtures/{apiFixtureId}/sync-match-center` query параметри:
 - `includePlayers` - optional, default `true`
 - `force` - optional, default `false`
+
+`POST /api/fixtures/{apiFixtureId}/sync-corners` query parameters:
+- `force` - optional, default `false`
+
+Behavior:
+- performs a targeted statistics-only refresh for the fixture
+- this is useful when the frontend/admin needs corners without re-syncing events, lineups and players
+
+Response:
+- `ApiFixtureId`
+- `LeagueApiId`
+- `Season`
+- `StateBucket`
+- `Forced`
+- `StatisticsSynced`
+- `SkippedComponents`
+- `ExecutedAtUtc`
+- `Freshness`
+- `Corners`
 
 `POST /api/fixtures/sync-live-match-center` query параметри:
 - `leagueId` - optional

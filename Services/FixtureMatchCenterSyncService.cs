@@ -153,6 +153,77 @@ public class FixtureMatchCenterSyncService
         };
     }
 
+    public async Task<FixtureCornersSyncDto> SyncFixtureStatisticsAsync(
+        long apiFixtureId,
+        bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await _dbContext.Fixtures
+            .Include(x => x.League)
+            .Include(x => x.HomeTeam)
+            .Include(x => x.AwayTeam)
+            .FirstOrDefaultAsync(x => x.ApiFixtureId == apiFixtureId, cancellationToken);
+
+        if (fixture is null)
+            throw new InvalidOperationException($"Fixture {apiFixtureId} was not found in database.");
+
+        var coverage = await _leagueCoverageService.GetCoverageAsync(
+            fixture.League.ApiLeagueId,
+            fixture.Season,
+            cancellationToken);
+
+        var nowUtc = DateTime.UtcNow;
+        var bucket = FixtureStatusMapper.GetStateBucket(fixture.Status);
+        var skippedComponents = new List<string>();
+
+        var shouldSyncStatistics = ShouldSyncStatistics(
+            fixture,
+            bucket,
+            coverage,
+            force,
+            nowUtc,
+            skippedComponents);
+
+        if (bucket != FixtureStateBucket.Finished && fixture.PostFinishMatchCenterSyncCount != 0)
+        {
+            fixture.PostFinishMatchCenterSyncCount = 0;
+        }
+
+        if (shouldSyncStatistics)
+        {
+            var statistics = await _apiService.GetFixtureStatisticsAsync(apiFixtureId, cancellationToken);
+            await ReplaceStatisticsAsync(fixture, statistics, nowUtc, cancellationToken);
+            fixture.LastStatisticsSyncedAtUtc = nowUtc;
+
+            await _syncStateService.SetLastSyncedAtAsync(
+                "fixture_statistics",
+                fixture.League.ApiLeagueId,
+                fixture.Season,
+                nowUtc,
+                cancellationToken);
+
+            if (bucket == FixtureStateBucket.Finished)
+            {
+                fixture.PostFinishMatchCenterSyncCount++;
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new FixtureCornersSyncDto
+        {
+            ApiFixtureId = fixture.ApiFixtureId,
+            LeagueApiId = fixture.League.ApiLeagueId,
+            Season = fixture.Season,
+            StateBucket = bucket.ToString(),
+            Forced = force,
+            StatisticsSynced = shouldSyncStatistics,
+            SkippedComponents = skippedComponents,
+            ExecutedAtUtc = nowUtc,
+            Freshness = MapFreshness(fixture)
+        };
+    }
+
     public async Task<LiveMatchCenterSyncDto> SyncLiveFixturesAsync(
         long? leagueId = null,
         int? season = null,

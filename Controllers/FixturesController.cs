@@ -430,6 +430,42 @@ public class FixturesController : ControllerBase
         return Ok(statistics);
     }
 
+    [HttpGet("{apiFixtureId:long}/corners")]
+    public async Task<IActionResult> GetFixtureCorners(
+        long apiFixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (fixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var corners = await _fixtureMatchCenterReadService.GetCornersAsync(fixture, cancellationToken);
+        return Ok(corners);
+    }
+
+    [HttpPost("{apiFixtureId:long}/sync-corners")]
+    public async Task<IActionResult> SyncFixtureCorners(
+        long apiFixtureId,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (apiFixtureId <= 0)
+            return BadRequest("apiFixtureId must be greater than 0.");
+
+        var existingFixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
+        if (existingFixture is null)
+            return NotFound(new { Message = "Fixture not found." });
+
+        var syncResult = await _fixtureMatchCenterSyncService.SyncFixtureStatisticsAsync(
+            apiFixtureId,
+            force,
+            cancellationToken);
+
+        var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken) ?? existingFixture;
+        syncResult.Corners = await _fixtureMatchCenterReadService.GetCornersAsync(fixture, cancellationToken);
+        return Ok(syncResult);
+    }
+
     [HttpGet("{apiFixtureId:long}/lineups")]
     public async Task<IActionResult> GetFixtureLineups(
         long apiFixtureId,
