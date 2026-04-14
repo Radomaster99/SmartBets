@@ -107,12 +107,14 @@ public class TheOddsLiveOddsService
         if (!options.Enabled)
         {
             result.SkippedReason = "provider_disabled";
+            await EnrichCoverageAsync(result, cancellationToken);
             return result;
         }
 
         if (!options.IsConfigured())
         {
             result.SkippedReason = "provider_not_configured";
+            await EnrichCoverageAsync(result, cancellationToken);
             return result;
         }
 
@@ -141,6 +143,7 @@ public class TheOddsLiveOddsService
             if (fixtures.Count == 0)
             {
                 result.SkippedReason = "no_live_fixtures_in_scope";
+                await EnrichCoverageAsync(result, cancellationToken);
                 return result;
             }
 
@@ -148,6 +151,7 @@ public class TheOddsLiveOddsService
                 await HasRecentLeagueSyncAsync(leagueApiId, season, options.GetMinLeagueSyncInterval(), cancellationToken))
             {
                 result.SkippedReason = "recently_synced";
+                await EnrichCoverageAsync(result, cancellationToken);
                 return result;
             }
 
@@ -173,6 +177,7 @@ public class TheOddsLiveOddsService
                 result.SportKeySource = resolution.Source;
                 result.SportKeyConfidence = resolution.Confidence;
                 result.SportKeyVerified = resolution.IsVerified;
+                await EnrichCoverageAsync(result, cancellationToken);
                 return result;
             }
 
@@ -191,6 +196,7 @@ public class TheOddsLiveOddsService
             result.SnapshotsProcessed = syncResult.SnapshotsProcessed;
             result.SnapshotsInserted = syncResult.SnapshotsInserted;
             result.SnapshotsSkippedUnchanged = syncResult.SnapshotsSkippedUnchanged;
+            await EnrichCoverageAsync(result, cancellationToken);
 
             return result;
         }
@@ -204,6 +210,7 @@ public class TheOddsLiveOddsService
 
             result.SkippedReason = "provider_sync_failed";
             result.ProviderError = BuildSafeErrorMessage(ex);
+            await EnrichCoverageAsync(result, cancellationToken);
             return result;
         }
     }
@@ -371,6 +378,46 @@ public class TheOddsLiveOddsService
         var result = await SyncLeagueLiveOddsAsync(fixture.LeagueApiId, fixture.Season, force, cancellationToken);
         result.ApiFixtureId = fixture.ApiFixtureId;
         return result;
+    }
+
+    private async Task EnrichCoverageAsync(
+        TheOddsLiveOddsSyncResultDto result,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(result.SportKey))
+        {
+            result.CoverageStatus = "supported";
+            result.CoverageMessage = "The competition is mapped to a supported The Odds market.";
+            return;
+        }
+
+        TheOddsLeagueMapping? mapping = null;
+        if (result.LeagueApiId.HasValue)
+        {
+            mapping = await _dbContext.TheOddsLeagueMappings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ApiFootballLeagueId == result.LeagueApiId.Value, cancellationToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(mapping?.TheOddsSportKey))
+        {
+            result.CoverageStatus = "supported";
+            result.CoverageMessage = "The competition has a stored The Odds sport-key mapping.";
+            return;
+        }
+
+        if (string.Equals(result.SkippedReason, "unable_to_resolve_league_sport_key", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(result.SportKeySource, "unresolved", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(result.SportKeySource, "db_unresolved", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(mapping?.ResolutionSource, "unresolved", StringComparison.OrdinalIgnoreCase))
+        {
+            result.CoverageStatus = "unsupported";
+            result.CoverageMessage = "This competition is not currently mapped to a supported The Odds market.";
+            return;
+        }
+
+        result.CoverageStatus = "unresolved";
+        result.CoverageMessage = "The competition coverage could not be determined from the current sync attempt.";
     }
 
     public async Task<IReadOnlyList<LiveOddsMarketDto>> GetLiveOddsWithCatchUpAsync(

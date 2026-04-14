@@ -138,6 +138,8 @@ public class AdminLiveOddsController : ControllerBase
             RefreshedRemotely = refreshedRemotely,
             HasCachedOdds = cachedItems.Count > 0,
             MarketsReturned = cachedItems.Count,
+            CoverageStatus = ResolveCoverageStatus(sync, cachedItems.Count > 0),
+            CoverageMessage = ResolveCoverageMessage(sync, cachedItems.Count > 0),
             Sync = sync,
             Items = cachedItems
         });
@@ -227,6 +229,8 @@ public class AdminLiveOddsController : ControllerBase
             LiveFixturesInScope = liveFixtures.Count,
             FixturesWithCachedOdds = cachedSummaries.Length,
             FixturesMissingCachedOdds = fixturesMissingCachedOdds,
+            CoverageStatus = ResolveCoverageStatus(sync, cachedSummaries.Length > 0),
+            CoverageMessage = ResolveCoverageMessage(sync, cachedSummaries.Length > 0),
             Sync = sync,
             Items = liveFixtures
         });
@@ -248,5 +252,23 @@ public class AdminLiveOddsController : ControllerBase
             UpdatedAtUtc = state.UpdatedAtUtc,
             UpdatedBy = state.UpdatedBy
         };
+    }
+
+    private static string ResolveCoverageStatus(TheOddsLiveOddsSyncResultDto? sync, bool hasCachedOdds)
+    {
+        if (sync is not null)
+            return sync.CoverageStatus;
+
+        return hasCachedOdds ? "supported" : "unresolved";
+    }
+
+    private static string? ResolveCoverageMessage(TheOddsLiveOddsSyncResultDto? sync, bool hasCachedOdds)
+    {
+        if (sync is not null)
+            return sync.CoverageMessage;
+
+        return hasCachedOdds
+            ? "Cached The Odds live odds are available for this scope."
+            : "No sync attempt was made yet, so coverage is not confirmed.";
     }
 }

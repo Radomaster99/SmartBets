@@ -5,6 +5,8 @@ public class TheOddsLiveOddsSyncResultDto
     public long? ApiFixtureId { get; set; }
     public long? LeagueApiId { get; set; }
     public int? Season { get; set; }
+    public string CoverageStatus { get; set; } = "unresolved";
+    public string? CoverageMessage { get; set; }
     public string? SportKey { get; set; }
     public string? SportKeySource { get; set; }
     public int SportKeyConfidence { get; set; }

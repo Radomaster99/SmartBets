@@ -13,6 +13,8 @@ public class AdminTheOddsFixtureRefreshResultDto
     public bool RefreshedRemotely { get; set; }
     public bool HasCachedOdds { get; set; }
     public int MarketsReturned { get; set; }
+    public string CoverageStatus { get; set; } = "unresolved";
+    public string? CoverageMessage { get; set; }
     public TheOddsLiveOddsSyncResultDto? Sync { get; set; }
     public IReadOnlyList<LiveOddsMarketDto> Items { get; set; } = Array.Empty<LiveOddsMarketDto>();
 }
@@ -39,6 +41,8 @@ public class AdminTheOddsLeagueRefreshResultDto
     public int LiveFixturesInScope { get; set; }
     public int FixturesWithCachedOdds { get; set; }
     public int FixturesMissingCachedOdds { get; set; }
+    public string CoverageStatus { get; set; } = "unresolved";
+    public string? CoverageMessage { get; set; }
     public TheOddsLiveOddsSyncResultDto? Sync { get; set; }
     public IReadOnlyList<AdminTheOddsLeagueFixtureItemDto> Items { get; set; } = Array.Empty<AdminTheOddsLeagueFixtureItemDto>();
 }

@@ -2844,6 +2844,8 @@ Response:
 
 Key fields:
 - `SourceProvider`
+- `CoverageStatus`
+- `CoverageMessage`
 - `SportKey`
 - `SportKeySource`
 - `SportKeyConfidence`
@@ -2862,6 +2864,9 @@ Key fields:
 
 Interpretation notes:
 - `200 OK` does not necessarily mean rows were inserted
+- `CoverageStatus = supported` means the competition is mapped to a supported The Odds market
+- `CoverageStatus = unsupported` means the backend could not resolve this competition to a reliable The Odds sport key, so this is a provider coverage limitation rather than an operational failure
+- `CoverageStatus = unresolved` means the sync attempt did not establish competition coverage one way or the other, usually because the provider was disabled, not configured or the sync was skipped too early
 - if `SportKey` is present but `FixturesMatched = 0`, the sport-key mapping worked and the remaining issue is fixture matching against the provider event window or provider team naming
 - if `SkippedReason = provider_sync_failed`, `ProviderError` now contains the useful provider/backend error text instead of returning a generic `500`
 - if `SkippedReason = recently_synced`, the backend intentionally skipped a duplicate provider call because the same league-season was refreshed too recently
@@ -2899,6 +2904,8 @@ Response:
 - `RefreshedRemotely`
 - `HasCachedOdds`
 - `MarketsReturned`
+- `CoverageStatus`
+- `CoverageMessage`
 - `Sync`
 - `Items`
 
@@ -2924,6 +2931,8 @@ Response:
 - `LiveFixturesInScope`
 - `FixturesWithCachedOdds`
 - `FixturesMissingCachedOdds`
+- `CoverageStatus`
+- `CoverageMessage`
 - `Sync`
 - `Items`
 
@@ -2936,6 +2945,11 @@ Each item in `Items` contains:
 - `AwayTeamName`
 - `HasCachedOdds`
 - `Summary`
+
+Frontend interpretation for admin flows:
+- if `CoverageStatus = unsupported`, show a calm provider-coverage message such as `Live odds are not available for this competition`
+- if `CoverageStatus = unresolved` and `SkippedReason` indicates config/provider issues, treat it as an operational/admin issue
+- if `CoverageStatus = supported` but `HasCachedOdds = false`, the competition is supported but the current fixture still has no stored live odds snapshot
 
 ### 32.4 Viewer-Driven Live Odds Refresh
 
@@ -3135,6 +3149,7 @@ If a reliable match is found:
 If no reliable match is found:
 - the unresolved state is also persisted
 - the backend does not keep hammering the provider on every request
+- sync responses can classify this as `CoverageStatus = unsupported` so the frontend/admin UI can treat it as a provider coverage limitation instead of a backend failure
 
 Current practical behavior:
 - common leagues such as the Premier League can resolve immediately through the built-in alias map
