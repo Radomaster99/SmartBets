@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
@@ -14,6 +15,7 @@ using SmartBets.Services;
 var builder = WebApplication.CreateBuilder(args);
 var apiKeyToken = builder.Configuration["ApiAuth:Token"];
 var jwtSigningKey = builder.Configuration["JwtAuth:SigningKey"];
+var adminAuthOptions = builder.Configuration.GetSection("AdminAuth").Get<AdminAuthOptions>() ?? new AdminAuthOptions();
 var effectiveJwtSigningKeyBytes = JwtSigningKeyHelper.ResolveSigningKeyBytes(jwtSigningKey, apiKeyToken);
 var authEnabled = !string.IsNullOrWhiteSpace(apiKeyToken) || !string.IsNullOrWhiteSpace(jwtSigningKey);
 var isDevelopment = builder.Environment.IsDevelopment();
@@ -100,10 +102,12 @@ builder.Services.Configure<ApiFootballClientOptions>(builder.Configuration.GetSe
 builder.Services.Configure<TheOddsApiOptions>(builder.Configuration.GetSection("TheOddsApi"));
 builder.Services.Configure<DataRetentionOptions>(builder.Configuration.GetSection("DataRetention"));
 builder.Services.Configure<JwtAuthOptions>(builder.Configuration.GetSection("JwtAuth"));
+builder.Services.Configure<AdminAuthOptions>(builder.Configuration.GetSection("AdminAuth"));
 builder.Services.AddSingleton<ApiFootballQuotaTelemetryService>();
 builder.Services.AddSingleton<CoreLeagueCatalogState>();
 builder.Services.AddSingleton<CoreAutomationQuotaManager>();
 builder.Services.AddSingleton<PreMatchOddsAttemptTrackerService>();
+builder.Services.AddSingleton<AdminAuthService>();
 builder.Services.AddSingleton<JwtTokenService>();
 
 builder.Services.AddAuthentication(options =>
@@ -134,6 +138,9 @@ builder.Services.AddAuthentication(options =>
             if (!string.IsNullOrWhiteSpace(context.Request.Headers["X-API-KEY"]))
                 return ApiKeyAuthenticationHandler.SchemeName;
 
+            if (context.Request.Cookies.ContainsKey(adminAuthOptions.GetCookieName()))
+                return AdminAuthService.AdminCookieScheme;
+
             return JwtBearerDefaults.AuthenticationScheme;
         };
     })
@@ -163,6 +170,37 @@ builder.Services.AddAuthentication(options =>
                     }
                 }
 
+                return Task.CompletedTask;
+            }
+        };
+    })
+    .AddCookie(AdminAuthService.AdminCookieScheme, options =>
+    {
+        options.Cookie.Name = adminAuthOptions.GetCookieName();
+        options.Cookie.HttpOnly = true;
+        options.Cookie.IsEssential = true;
+        options.Cookie.SameSite = adminAuthOptions.GetCookieSameSite();
+        options.Cookie.SecurePolicy = isDevelopment
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
+        options.ExpireTimeSpan = adminAuthOptions.GetSessionLifetime();
+        options.SlidingExpiration = true;
+
+        if (!string.IsNullOrWhiteSpace(adminAuthOptions.CookieDomain))
+        {
+            options.Cookie.Domain = adminAuthOptions.CookieDomain.Trim();
+        }
+
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnRedirectToLogin = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            },
+            OnRedirectToAccessDenied = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return Task.CompletedTask;
             }
         };
@@ -237,7 +275,8 @@ builder.Services.AddCors(options =>
         {
             policy.WithOrigins(configuredAllowedOrigins)
                   .AllowAnyHeader()
-                  .AllowAnyMethod();
+                  .AllowAnyMethod()
+                  .AllowCredentials();
         }
         else if (isDevelopment)
         {

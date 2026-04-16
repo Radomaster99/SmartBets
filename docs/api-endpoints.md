@@ -71,6 +71,7 @@ Swagger note:
 - `ApiFootball:ApiKey`
 - `ApiFootballClient:*`
 - `ApiAuth:Token`
+- `AdminAuth:*`
 - `JwtAuth:*`
 - `CoreDataAutomation:*`
 - `DataRetention:*`
@@ -81,6 +82,7 @@ Swagger note:
 
 CORS note:
 - ако `CORS:AllowedOrigins` не е зададен извън development, приложението fail-ва closed за cross-origin browser заявки
+- когато `CORS:AllowedOrigins` е конфигуриран, backend-ът вече връща и credential-friendly CORS headers, така че httpOnly admin cookie session може да работи през browser requests към позволените origins
 
 ## 3. Системни endpoint-и
 
@@ -2719,13 +2721,75 @@ This means:
 - older seasons can still be imported on demand
 - older seasons are not continuously re-polled by the automatic jobs
 
-## 30. JWT Auth
+## 30. Auth
 
-The backend now supports JWT as the preferred auth model for both REST and SignalR.
-
-Accepted auth methods:
+The backend now supports three admin auth paths:
 - `Authorization: Bearer {jwt}`
 - legacy bridge: `X-API-KEY: {token}`
+- admin cookie session through `POST /api/admin/auth/login`
+
+### 30.1 Admin Cookie Session
+
+Purpose:
+- browser-friendly admin auth for `/admin` style frontend flows
+- avoids exposing the legacy API key in normal admin page usage
+- uses an `httpOnly` auth cookie instead of storing the session token in frontend JavaScript
+
+Admin session endpoints:
+- `POST /api/admin/auth/login`
+- `GET /api/admin/auth/me`
+- `POST /api/admin/auth/logout`
+
+`POST /api/admin/auth/login` request body:
+- `Username`
+- `Password`
+
+Behavior:
+- validates credentials from `AdminAuth`
+- issues an encrypted/signed auth cookie through ASP.NET Core cookie auth
+- signed-in users receive the `admin` role and can call existing `admin-only` endpoints without passing `X-API-KEY`
+
+`GET /api/admin/auth/me`:
+- returns the current admin session state
+- returns `200` even when not signed in, with `Authenticated = false`
+- useful for frontend middleware, admin layout bootstrapping and route guards
+
+`POST /api/admin/auth/logout`:
+- clears the admin auth cookie
+
+`AdminSessionDto`:
+- `Configured`
+- `Authenticated`
+- `AuthenticationType`
+- `Username`
+- `DisplayName`
+- `Roles`
+- `AuthSource`
+- `SessionExpiresAtUtc`
+
+Cookie notes:
+- the cookie is `httpOnly`
+- outside development it is `Secure`
+- `SameSite` is configurable through `AdminAuth:CookieSameSite`
+- if the frontend talks to the backend cross-origin, browser requests must include credentials and the origin must be listed in `CORS:AllowedOrigins`
+- for cross-site admin cookie usage the usual production setup is `AdminAuth:CookieSameSite=None` over HTTPS
+
+Relevant config:
+- `AdminAuth:Username`
+- `AdminAuth:Password`
+- `AdminAuth:Users`
+- `AdminAuth:CookieName`
+- `AdminAuth:SessionHours`
+- `AdminAuth:CookieSameSite`
+- `AdminAuth:CookieDomain`
+
+Multi-admin note:
+- for a single shared admin account you can use `AdminAuth:Username` + `AdminAuth:Password`
+- for multiple named admin accounts use `AdminAuth:Users:{index}:Username`, `Password` and optional `DisplayName`
+
+### 30.2 JWT Auth
+
+The backend still supports JWT as the preferred token model for REST and SignalR integrations.
 
 JWT bridge endpoints:
 - `POST /api/auth/token`
@@ -2734,7 +2798,7 @@ JWT bridge endpoints:
 `POST /api/auth/token`:
 - requires an already authenticated admin caller
 - can be called with the legacy API key during the transition
-- returns a signed JWT access token for frontend use
+- returns a signed JWT access token for frontend or integration use
 - default access-token lifetime is now `60` minutes unless `JwtAuth:AccessTokenMinutes` overrides it
 
 SignalR auth:

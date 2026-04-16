@@ -44,8 +44,10 @@ Stage 3 preview infrastructure:
 - `GET /ping` е публичен health check
 - Swagger е включен по подразбиране само в development
 - ако `ApiAuth:Token` е настроен, всички непублични endpoint-и изискват header `X-API-KEY`
+- admin frontend flow вече може да ползва `POST /api/admin/auth/login`, `GET /api/admin/auth/me` и `POST /api/admin/auth/logout` с `httpOnly` cookie session
 - sync/admin/debug endpoint-ите са admin-only
 - ако `CORS:AllowedOrigins` липсва извън development, browser cross-origin достъпът се блокира
+- при explicit `CORS:AllowedOrigins` backend-ът позволява credentialed browser requests, което е нужно за admin cookie session flows
 - приложението чете порта от env var `PORT` и по подразбиране слуша на `10000`
 Stage 4 analytics:
 - `team_statistics`
