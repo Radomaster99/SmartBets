@@ -16,6 +16,7 @@ public class FixturesController : ControllerBase
     private readonly FixtureLiveStatusSyncService _fixtureLiveStatusSyncService;
     private readonly FixtureMatchCenterReadService _fixtureMatchCenterReadService;
     private readonly FixtureMatchCenterSyncService _fixtureMatchCenterSyncService;
+    private readonly FixtureLiveStatisticsAutoRefreshService _fixtureLiveStatisticsAutoRefreshService;
     private readonly FixturePreviewReadService _fixturePreviewReadService;
     private readonly FixturePreviewSyncService _fixturePreviewSyncService;
     private readonly PreMatchOddsService _preMatchOddsService;
@@ -29,6 +30,7 @@ public class FixturesController : ControllerBase
         FixtureLiveStatusSyncService fixtureLiveStatusSyncService,
         FixtureMatchCenterReadService fixtureMatchCenterReadService,
         FixtureMatchCenterSyncService fixtureMatchCenterSyncService,
+        FixtureLiveStatisticsAutoRefreshService fixtureLiveStatisticsAutoRefreshService,
         FixturePreviewReadService fixturePreviewReadService,
         FixturePreviewSyncService fixturePreviewSyncService,
         PreMatchOddsService preMatchOddsService,
@@ -41,6 +43,7 @@ public class FixturesController : ControllerBase
         _fixtureLiveStatusSyncService = fixtureLiveStatusSyncService ?? throw new ArgumentNullException(nameof(fixtureLiveStatusSyncService));
         _fixtureMatchCenterReadService = fixtureMatchCenterReadService ?? throw new ArgumentNullException(nameof(fixtureMatchCenterReadService));
         _fixtureMatchCenterSyncService = fixtureMatchCenterSyncService ?? throw new ArgumentNullException(nameof(fixtureMatchCenterSyncService));
+        _fixtureLiveStatisticsAutoRefreshService = fixtureLiveStatisticsAutoRefreshService ?? throw new ArgumentNullException(nameof(fixtureLiveStatisticsAutoRefreshService));
         _fixturePreviewReadService = fixturePreviewReadService ?? throw new ArgumentNullException(nameof(fixturePreviewReadService));
         _fixturePreviewSyncService = fixturePreviewSyncService ?? throw new ArgumentNullException(nameof(fixturePreviewSyncService));
         _preMatchOddsService = preMatchOddsService ?? throw new ArgumentNullException(nameof(preMatchOddsService));
@@ -433,6 +436,7 @@ public class FixturesController : ControllerBase
         if (fixture is null)
             return NotFound(new { Message = "Fixture not found." });
 
+        await _fixtureLiveStatisticsAutoRefreshService.TryRefreshAsync(fixture, cancellationToken);
         var statistics = await _fixtureMatchCenterReadService.GetStatisticsAsync(fixture.Id, cancellationToken);
         return Ok(statistics);
     }
@@ -446,6 +450,7 @@ public class FixturesController : ControllerBase
         if (fixture is null)
             return NotFound(new { Message = "Fixture not found." });
 
+        await _fixtureLiveStatisticsAutoRefreshService.TryRefreshAsync(fixture, cancellationToken);
         var corners = await _fixtureMatchCenterReadService.GetCornersAsync(fixture, cancellationToken);
         return Ok(corners);
     }
@@ -509,6 +514,9 @@ public class FixturesController : ControllerBase
         var fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken);
         if (fixture is null)
             return NotFound(new { Message = "Fixture not found." });
+
+        await _fixtureLiveStatisticsAutoRefreshService.TryRefreshAsync(fixture, cancellationToken);
+        fixture = await GetFixtureWithRelationsAsync(apiFixtureId, cancellationToken) ?? fixture;
 
         var detail = await BuildFixtureDetailAsync(fixture, marketName, cancellationToken);
         var events = await _fixtureMatchCenterReadService.GetEventsAsync(fixture.Id, cancellationToken);

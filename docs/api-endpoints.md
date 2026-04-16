@@ -1094,11 +1094,18 @@ Read endpoint-и като:
 - `/api/fixtures`
 - `/api/fixtures/query`
 - `/api/fixtures/{apiFixtureId}`
+- `/api/fixtures/{apiFixtureId}/statistics`
 - `/api/fixtures/{apiFixtureId}/corners`
+- `/api/fixtures/{apiFixtureId}/match-center`
 - `/api/standings`
 - `/api/odds`
 
-четат от локалната база.
+четат основно от локалната база.
+
+Важно изключение:
+- за live fixtures `GET /api/fixtures/{apiFixtureId}/statistics`, `GET /api/fixtures/{apiFixtureId}/corners` и `GET /api/fixtures/{apiFixtureId}/match-center` могат да задействат throttled statistics-only catch-up към API-Football
+- това позволява UI-то да вижда по-свеж statistics/corners snapshot без frontend-ът да вика sync endpoint-и
+- ако catch-up заявката се провали, endpoint-ът пак връща последния наличен локален snapshot
 
 ### 15.4 Corners frontend usage
 
@@ -1106,6 +1113,7 @@ Read endpoint-и като:
 - normal page load -> `GET /api/fixtures/{apiFixtureId}/corners`
 - ако `HasData = true`, frontend-ът рендерира `Home.Corners`, `Away.Corners` и по желание `TotalCorners`
 - ако `HasData = false`, UI може да покаже `N/A`, skeleton или бутон за admin refresh според контекста
+- за live fixture endpoint-ът може да направи automatic statistics catch-up най-много веднъж на минута за мача, без frontend-ът да вика `POST /sync-corners`
 
 Кога да се ползва sync:
 - `POST /api/fixtures/{apiFixtureId}/sync-corners` е targeted refresh endpoint
@@ -1422,8 +1430,9 @@ Base route:
 - `GET /api/fixtures/{apiFixtureId}/match-center`
 
 Поведение:
-- всички тези endpoint-и четат само от локалната база
-- не правят директни remote calls към API-Football
+- по подразбиране тези endpoint-и четат от локалната база
+- за live fixtures `GET /api/fixtures/{apiFixtureId}/statistics`, `GET /api/fixtures/{apiFixtureId}/corners` и `GET /api/fixtures/{apiFixtureId}/match-center` могат да пуснат throttled statistics-only catch-up към API-Football
+- този catch-up не sync-ва events, lineups или players; той поддържа само `fixture_statistics` свежи
 - ако fixture липсва -> `404 NotFound`
 - ако fixture съществува, но match-center snapshot още не е sync-нат -> връщат `200` с празни масиви
 
@@ -1443,7 +1452,7 @@ Base route:
 `GET /api/fixtures/{apiFixtureId}/corners`
 - convenience read endpoint over stored fixture statistics
 - returns a normalized home/away corners payload instead of the raw generic statistics list
-- reads only from the local database
+- for live fixtures can trigger a throttled statistics-only catch-up before reading the stored snapshot
 - if no stored corner rows exist yet, it still returns `200` with `HasData = false`
 
 Response:
@@ -1500,7 +1509,9 @@ Response:
 ### 21.4 Rate-aware sync стратегия
 
 За да пази лимита от 5000 заявки/ден, Stage 2 sync логиката е selective:
-- read endpoint-ите никога не удрят API-Football
+- повечето read endpoint-и никога не удрят API-Football
+- изключение са live `GET /api/fixtures/{apiFixtureId}/statistics`, `GET /api/fixtures/{apiFixtureId}/corners` и `GET /api/fixtures/{apiFixtureId}/match-center`, които могат да направят statistics-only catch-up
+- read-driven catch-up-ът е throttled до най-много веднъж на 1 минута за fixture и има кратък in-memory dedupe прозорец за паралелни заявки
 - live events се refresh-ват най-много веднъж на 15 секунди
 - live statistics се refresh-ват най-много веднъж на 1 минута
 - live player statistics се refresh-ват най-много веднъж на 1 минута и по подразбиране са изключени в batch live sync

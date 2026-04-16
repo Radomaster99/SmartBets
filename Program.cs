@@ -191,6 +191,7 @@ builder.Services.AddScoped<FixtureSyncService>();
 builder.Services.AddScoped<FixtureLiveStatusSyncService>();
 builder.Services.AddScoped<FixtureMatchCenterReadService>();
 builder.Services.AddScoped<FixtureMatchCenterSyncService>();
+builder.Services.AddScoped<FixtureLiveStatisticsAutoRefreshService>();
 builder.Services.AddScoped<FixturePreviewReadService>();
 builder.Services.AddScoped<FixturePreviewSyncService>();
 builder.Services.AddScoped<TeamAnalyticsService>();
