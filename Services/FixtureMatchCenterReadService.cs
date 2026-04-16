@@ -88,8 +88,8 @@ public class FixtureMatchCenterReadService
             .ThenByDescending(x => x.Id)
             .ToListAsync(cancellationToken);
 
-        var homeRow = rows.FirstOrDefault(x => x.ApiTeamId == fixture.HomeTeam.ApiTeamId);
-        var awayRow = rows.FirstOrDefault(x => x.ApiTeamId == fixture.AwayTeam.ApiTeamId);
+        var homeRow = SelectPreferredCornerRow(rows.Where(x => x.ApiTeamId == fixture.HomeTeam.ApiTeamId));
+        var awayRow = SelectPreferredCornerRow(rows.Where(x => x.ApiTeamId == fixture.AwayTeam.ApiTeamId));
 
         var homeCorners = ParseIntegerStatistic(homeRow?.Value);
         var awayCorners = ParseIntegerStatistic(awayRow?.Value);
@@ -257,6 +257,34 @@ public class FixtureMatchCenterReadService
             Position = lineup.PlayerPosition,
             Grid = lineup.PlayerGrid
         };
+    }
+
+    private static FixtureStatistic? SelectPreferredCornerRow(IEnumerable<FixtureStatistic> rows)
+    {
+        return rows
+            .OrderByDescending(x => GetCornerTypePriority(x.Type))
+            .ThenByDescending(x => x.SyncedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefault();
+    }
+
+    private static int GetCornerTypePriority(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+            return 0;
+
+        var normalized = type.Trim();
+
+        if (string.Equals(normalized, "Corner Kicks", StringComparison.OrdinalIgnoreCase))
+            return 300;
+
+        if (normalized.Contains("corner kicks", StringComparison.OrdinalIgnoreCase))
+            return 200;
+
+        if (normalized.Contains("corner", StringComparison.OrdinalIgnoreCase))
+            return 100;
+
+        return 0;
     }
 
     private static int? ParseIntegerStatistic(string? value)

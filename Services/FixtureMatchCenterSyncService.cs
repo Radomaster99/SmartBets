@@ -839,6 +839,9 @@ public class FixtureMatchCenterSyncService
         List<string> skipped,
         string skipReason)
     {
+        if (!lastSyncedAtUtc.HasValue)
+            return true;
+
         if (fixture.PostFinishMatchCenterSyncCount >= MaxPostFinishRefreshes)
         {
             skipped.Add(skipReason);
