@@ -15,6 +15,7 @@ public class CoreDataAutomationOrchestrator
     private readonly IOptionsMonitor<ApiFootballClientOptions> _apiFootballClientOptions;
     private readonly ApiFootballQuotaTelemetryService _quotaTelemetryService;
     private readonly CoreAutomationQuotaManager _quotaManager;
+    private readonly PreMatchOddsAttemptTrackerService _preMatchOddsAttemptTrackerService;
     private readonly CoreAutomationCatalogRefreshJobService _catalogRefreshJobService;
     private readonly CoreAutomationTeamsRollingJobService _teamsRollingJobService;
     private readonly CoreAutomationStandingsRollingJobService _standingsRollingJobService;
@@ -33,6 +34,7 @@ public class CoreDataAutomationOrchestrator
         IOptionsMonitor<ApiFootballClientOptions> apiFootballClientOptions,
         ApiFootballQuotaTelemetryService quotaTelemetryService,
         CoreAutomationQuotaManager quotaManager,
+        PreMatchOddsAttemptTrackerService preMatchOddsAttemptTrackerService,
         CoreAutomationCatalogRefreshJobService catalogRefreshJobService,
         CoreAutomationTeamsRollingJobService teamsRollingJobService,
         CoreAutomationStandingsRollingJobService standingsRollingJobService,
@@ -50,6 +52,7 @@ public class CoreDataAutomationOrchestrator
         _apiFootballClientOptions = apiFootballClientOptions;
         _quotaTelemetryService = quotaTelemetryService;
         _quotaManager = quotaManager;
+        _preMatchOddsAttemptTrackerService = preMatchOddsAttemptTrackerService;
         _catalogRefreshJobService = catalogRefreshJobService;
         _teamsRollingJobService = teamsRollingJobService;
         _standingsRollingJobService = standingsRollingJobService;
@@ -903,13 +906,26 @@ public class CoreDataAutomationOrchestrator
                 LastCollectedAtUtc = x.Max(y => y.CollectedAt)
             })
             .ToDictionaryAsync(x => x.ApiFixtureId, x => x.LastCollectedAtUtc, cancellationToken);
+        var latestAttemptedByApiFixtureId = _preMatchOddsAttemptTrackerService
+            .GetLastAttemptedAtLookup(apiFixtureIds, nowUtc);
 
         return candidates
             .Where(x =>
             {
                 var interval = ResolveOddsInterval(nowUtc, x.KickoffAtUtc, options);
-                return !latestCollectedByApiFixtureId.TryGetValue(x.ApiFixtureId, out var lastCollectedAtUtc) ||
-                       nowUtc - lastCollectedAtUtc >= interval;
+                var hasCollectedAt = latestCollectedByApiFixtureId.TryGetValue(x.ApiFixtureId, out var lastCollectedAtUtc);
+                var hasAttemptedAt = latestAttemptedByApiFixtureId.TryGetValue(x.ApiFixtureId, out var lastAttemptedAtUtc);
+
+                if (!hasCollectedAt && !hasAttemptedAt)
+                    return true;
+
+                var lastActivityAtUtc = hasCollectedAt && hasAttemptedAt
+                    ? (lastCollectedAtUtc >= lastAttemptedAtUtc ? lastCollectedAtUtc : lastAttemptedAtUtc)
+                    : hasCollectedAt
+                        ? lastCollectedAtUtc
+                        : lastAttemptedAtUtc;
+
+                return nowUtc - lastActivityAtUtc >= interval;
             })
             .OrderBy(x => x.KickoffAtUtc)
             .ThenBy(x => x.LeagueApiId)

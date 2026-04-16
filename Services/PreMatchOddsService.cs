@@ -29,17 +29,23 @@ public class PreMatchOddsService
     private readonly FootballApiService _apiService;
     private readonly LeagueCoverageService _leagueCoverageService;
     private readonly OddsAnalyticsService _oddsAnalyticsService;
+    private readonly PreMatchOddsAttemptTrackerService _attemptTracker;
+    private readonly ILogger<PreMatchOddsService> _logger;
 
     public PreMatchOddsService(
         AppDbContext dbContext,
         FootballApiService apiService,
         LeagueCoverageService leagueCoverageService,
-        OddsAnalyticsService oddsAnalyticsService)
+        OddsAnalyticsService oddsAnalyticsService,
+        PreMatchOddsAttemptTrackerService attemptTracker,
+        ILogger<PreMatchOddsService> logger)
     {
         _dbContext = dbContext;
         _apiService = apiService;
         _leagueCoverageService = leagueCoverageService;
         _oddsAnalyticsService = oddsAnalyticsService;
+        _attemptTracker = attemptTracker;
+        _logger = logger;
     }
 
     public async Task<OddsSyncResult> SyncOddsAsync(
@@ -86,14 +92,49 @@ public class PreMatchOddsService
         }
 
         var apiOddsFixtures = new List<Models.ApiFootball.ApiFootballOddsFixtureItem>();
+        var providerEmptyResponses = 0;
+        var failedFixtureRequests = 0;
 
         foreach (var apiFixtureId in normalizedFixtureIds)
         {
-            var rows = await _apiService.GetOddsByFixtureAsync(apiFixtureId, cancellationToken);
-            if (rows.Count > 0)
+            try
             {
-                apiOddsFixtures.AddRange(rows);
+                var rows = await _apiService.GetOddsByFixtureAsync(apiFixtureId, cancellationToken);
+                if (rows.Count > 0)
+                {
+                    apiOddsFixtures.AddRange(rows);
+                }
+                else
+                {
+                    providerEmptyResponses++;
+                }
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                failedFixtureRequests++;
+                _logger.LogWarning(
+                    ex,
+                    "Pre-match odds fetch failed for fixture {ApiFixtureId}. Continuing with the remaining fixtures in the batch.",
+                    apiFixtureId);
+            }
+            finally
+            {
+                _attemptTracker.RecordAttempt(apiFixtureId, DateTime.UtcNow);
+            }
+        }
+
+        if (providerEmptyResponses > 0 || failedFixtureRequests > 0)
+        {
+            _logger.LogInformation(
+                "Pre-match odds fixture batch completed with partial provider coverage. Attempted={Attempted}, WithRows={WithRows}, Empty={Empty}, Failed={Failed}.",
+                normalizedFixtureIds.Count,
+                Math.Max(0, normalizedFixtureIds.Count - providerEmptyResponses - failedFixtureRequests),
+                providerEmptyResponses,
+                failedFixtureRequests);
         }
 
         return await SyncOddsCoreAsync(apiOddsFixtures, normalizedMarketName, cancellationToken);

@@ -103,6 +103,7 @@ builder.Services.Configure<JwtAuthOptions>(builder.Configuration.GetSection("Jwt
 builder.Services.AddSingleton<ApiFootballQuotaTelemetryService>();
 builder.Services.AddSingleton<CoreLeagueCatalogState>();
 builder.Services.AddSingleton<CoreAutomationQuotaManager>();
+builder.Services.AddSingleton<PreMatchOddsAttemptTrackerService>();
 builder.Services.AddSingleton<JwtTokenService>();
 
 builder.Services.AddAuthentication(options =>
