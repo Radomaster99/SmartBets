@@ -910,14 +910,23 @@ public class CoreDataAutomationOrchestrator
             .GetLastAttemptedAtLookup(apiFixtureIds, nowUtc);
 
         return candidates
-            .Where(x =>
+            .Select(x =>
             {
                 var interval = ResolveOddsInterval(nowUtc, x.KickoffAtUtc, options);
                 var hasCollectedAt = latestCollectedByApiFixtureId.TryGetValue(x.ApiFixtureId, out var lastCollectedAtUtc);
                 var hasAttemptedAt = latestAttemptedByApiFixtureId.TryGetValue(x.ApiFixtureId, out var lastAttemptedAtUtc);
 
                 if (!hasCollectedAt && !hasAttemptedAt)
-                    return true;
+                {
+                    return new
+                    {
+                        Target = x,
+                        Interval = interval,
+                        HasAnyActivity = false,
+                        LastActivityAtUtc = (DateTime?)null,
+                        IsDue = true
+                    };
+                }
 
                 var lastActivityAtUtc = hasCollectedAt && hasAttemptedAt
                     ? (lastCollectedAtUtc >= lastAttemptedAtUtc ? lastCollectedAtUtc : lastAttemptedAtUtc)
@@ -925,10 +934,23 @@ public class CoreDataAutomationOrchestrator
                         ? lastCollectedAtUtc
                         : lastAttemptedAtUtc;
 
-                return nowUtc - lastActivityAtUtc >= interval;
+                return new
+                {
+                    Target = x,
+                    Interval = interval,
+                    HasAnyActivity = true,
+                    LastActivityAtUtc = (DateTime?)lastActivityAtUtc,
+                    IsDue = nowUtc - lastActivityAtUtc >= interval
+                };
             })
-            .OrderBy(x => x.KickoffAtUtc)
-            .ThenBy(x => x.LeagueApiId)
+            .Where(x => x.IsDue)
+            .OrderBy(x => x.HasAnyActivity ? 1 : 0)
+            .ThenBy(x => x.LastActivityAtUtc ?? DateTime.MinValue)
+            .ThenByDescending(x => x.Interval)
+            .ThenBy(x => x.Target.KickoffAtUtc)
+            .ThenBy(x => x.Target.LeagueApiId)
+            .ThenBy(x => x.Target.ApiFixtureId)
+            .Select(x => x.Target)
             .Take(maxCount)
             .ToList();
     }
