@@ -27,6 +27,7 @@ public class LeaguesController : ControllerBase
         _syncStateService = syncStateService;
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(CancellationToken cancellationToken)
     {
@@ -79,6 +80,7 @@ public class LeaguesController : ControllerBase
         return Ok(leagues);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("{apiLeagueId:long}/analytics/sync")]
     public async Task<IActionResult> SyncAnalytics(
         long apiLeagueId,
@@ -98,6 +100,7 @@ public class LeaguesController : ControllerBase
         return Ok(result);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("analytics/sync")]
     public async Task<IActionResult> SyncSupportedLeagueAnalytics(
         [FromQuery] int? season,

@@ -41,6 +41,7 @@ public class OddsController : ControllerBase
         _syncStateService = syncStateService;
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(
         [FromQuery] long leagueId,
@@ -95,6 +96,7 @@ public class OddsController : ControllerBase
         });
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("live-bets/sync")]
     public async Task<IActionResult> SyncLiveBetTypes(CancellationToken cancellationToken = default)
     {
@@ -109,6 +111,7 @@ public class OddsController : ControllerBase
         return Ok(result);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("live/sync")]
     public async Task<IActionResult> SyncLiveOdds(
         [FromQuery] long? fixtureId,
@@ -137,6 +140,7 @@ public class OddsController : ControllerBase
         return Ok(result);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("live/the-odds/sync")]
     public async Task<IActionResult> SyncTheOddsLiveOdds(
         [FromQuery] long? apiFixtureId,
@@ -271,6 +275,7 @@ public class OddsController : ControllerBase
         });
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("analytics/rebuild")]
     public async Task<IActionResult> RebuildAnalytics(
         [FromQuery] long? leagueId,

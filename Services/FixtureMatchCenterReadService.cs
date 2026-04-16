@@ -80,7 +80,10 @@ public class FixtureMatchCenterReadService
     {
         var rows = await _dbContext.FixtureStatistics
             .AsNoTracking()
-            .Where(x => x.FixtureId == fixture.Id && IsCornerStatisticType(x.Type))
+            .Where(x =>
+                x.FixtureId == fixture.Id &&
+                x.Type != null &&
+                EF.Functions.ILike(x.Type, "%corner%"))
             .OrderByDescending(x => x.SyncedAtUtc)
             .ThenByDescending(x => x.Id)
             .ToListAsync(cancellationToken);
@@ -254,12 +257,6 @@ public class FixtureMatchCenterReadService
             Position = lineup.PlayerPosition,
             Grid = lineup.PlayerGrid
         };
-    }
-
-    private static bool IsCornerStatisticType(string? type)
-    {
-        return !string.IsNullOrWhiteSpace(type) &&
-               type.Contains("corner", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int? ParseIntegerStatistic(string? value)

@@ -42,8 +42,10 @@ Stage 3 preview infrastructure:
 
 Бързи бележки:
 - `GET /ping` е публичен health check
-- Swagger е достъпен през `/swagger`
+- Swagger е включен по подразбиране само в development
 - ако `ApiAuth:Token` е настроен, всички непублични endpoint-и изискват header `X-API-KEY`
+- sync/admin/debug endpoint-ите са admin-only
+- ако `CORS:AllowedOrigins` липсва извън development, browser cross-origin достъпът се блокира
 - приложението чете порта от env var `PORT` и по подразбиране слуша на `10000`
 Stage 4 analytics:
 - `team_statistics`
@@ -193,7 +195,9 @@ Stage 13 JWT auth for REST and SignalR:
 - new debug endpoint: `GET /api/auth/me`
 - legacy `X-API-KEY` remains available during the transition, but JWT is now the preferred frontend auth model
 - production recommendation: set a dedicated `JwtAuth:SigningKey` with at least 32 bytes
+- default JWT access-token lifetime is now 60 minutes
 - if `JwtAuth:SigningKey` is shorter or missing, the backend derives a stable 256-bit HMAC key from the configured secret so `POST /api/auth/token` does not fail on HS256 key length
+- SignalR no longer accepts API keys through query-string `access_token`
 
 Stage 14 live odds list-view optimization:
 - `GET /api/fixtures/query` supports `includeLiveOddsSummary=true`

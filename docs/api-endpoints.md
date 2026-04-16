@@ -32,12 +32,19 @@ X-API-KEY: your-token
 
 Ако `ApiAuth:Token` липсва или е празен, middleware-ът пропуска заявките без ключ.
 
+Security note:
+- sync/admin/debug endpoint-ите вече са `admin-only`
+- read endpoint-ите остават достъпни за валидно аутентикирани заявки според текущия auth setup
+
 ### 2.2 Публични endpoint-и
 
 Следните пътища са публични:
 
 - `GET /ping`
-- `/swagger`
+
+Swagger note:
+- `/swagger` е включен по подразбиране само в development
+- извън development се показва само ако `Swagger:Enabled=true`
 
 ### 2.3 Формат на грешките
 
@@ -68,8 +75,12 @@ X-API-KEY: your-token
 - `CoreDataAutomation:*`
 - `DataRetention:*`
 - `TheOddsApi:*`
+- `Swagger:Enabled`
 - `CORS:AllowedOrigins`
 - env var `PORT`
+
+CORS note:
+- ако `CORS:AllowedOrigins` не е зададен извън development, приложението fail-ва closed за cross-origin browser заявки
 
 ## 3. Системни endpoint-и
 
@@ -88,6 +99,10 @@ pong
 
 Предназначение:
 - Swagger UI за ръчен преглед и тест на API-то
+
+Важно:
+- по подразбиране е наличен само в development
+- за production/manual diagnostics трябва изрично `Swagger:Enabled=true`
 
 ## 4. Countries
 
@@ -1110,7 +1125,8 @@ Read endpoint-и като:
 - preload flow в момента не синхронизира odds
 - bookmaker sync не е заместител на odds sync
 - `appsettings.Development.json` е игнориран и не се качва в git
-- Swagger е публичен, но останалите endpoint-и минават през API key middleware, ако токенът е активен
+- Swagger вече не е публичен по подразбиране извън development
+- sync/admin/debug endpoint-ите вече изискват admin-authenticated caller
 
 ## 17. Примерни заявки
 
@@ -2705,26 +2721,29 @@ JWT bridge endpoints:
 - `GET /api/auth/me`
 
 `POST /api/auth/token`:
-- requires an already authenticated caller
+- requires an already authenticated admin caller
 - can be called with the legacy API key during the transition
 - returns a signed JWT access token for frontend use
+- default access-token lifetime is now `60` minutes unless `JwtAuth:AccessTokenMinutes` overrides it
 
 SignalR auth:
 - hub route: `/hubs/live-odds`
 - browser clients should pass the JWT through `access_token`
 - example negotiate path:
   - `POST /hubs/live-odds/negotiate?negotiateVersion=1&access_token={jwt}`
+- SignalR no longer accepts the legacy API key through query-string `access_token`
 
 Relevant config:
 - `JwtAuth:Issuer`
 - `JwtAuth:Audience`
 - `JwtAuth:SigningKey`
 - `JwtAuth:AccessTokenMinutes`
+- `Swagger:Enabled`
 
 Signing key note:
 - preferred production setup is a dedicated `JwtAuth:SigningKey` with at least 32 bytes
 - if the configured secret is shorter, the backend derives a stable 256-bit HMAC key from it
-- this keeps HS256 valid even when the legacy API key is shorter than 256 bits
+- production should still use a dedicated JWT signing key instead of relying on the legacy API key secret
 
 ## 31. Live Odds List Optimization
 

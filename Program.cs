@@ -16,6 +16,8 @@ var apiKeyToken = builder.Configuration["ApiAuth:Token"];
 var jwtSigningKey = builder.Configuration["JwtAuth:SigningKey"];
 var effectiveJwtSigningKeyBytes = JwtSigningKeyHelper.ResolveSigningKeyBytes(jwtSigningKey, apiKeyToken);
 var authEnabled = !string.IsNullOrWhiteSpace(apiKeyToken) || !string.IsNullOrWhiteSpace(jwtSigningKey);
+var isDevelopment = builder.Environment.IsDevelopment();
+var swaggerEnabled = isDevelopment || builder.Configuration.GetValue<bool>("Swagger:Enabled");
 
 // Controllers + JSON
 builder.Services.AddControllers()
@@ -122,11 +124,9 @@ builder.Services.AddAuthentication(options =>
             if (context.Request.Path.StartsWithSegments(LiveOddsHub.Route))
             {
                 var accessToken = context.Request.Query["access_token"].FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(accessToken))
+                if (!string.IsNullOrWhiteSpace(accessToken) && LooksLikeJwt(accessToken))
                 {
-                    return LooksLikeJwt(accessToken)
-                        ? JwtBearerDefaults.AuthenticationScheme
-                        : ApiKeyAuthenticationHandler.SchemeName;
+                    return JwtBearerDefaults.AuthenticationScheme;
                 }
             }
 
@@ -224,27 +224,48 @@ builder.Services.AddHostedService<TheOddsViewerDrivenRefreshBackgroundService>()
 // CORS
 var allowedOrigins = builder.Configuration["CORS:AllowedOrigins"]?
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var hasConfiguredAllowedOrigins = allowedOrigins is { Length: > 0 };
+var configuredAllowedOrigins = allowedOrigins ?? Array.Empty<string>();
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
-        if (allowedOrigins is { Length: > 0 })
+        if (hasConfiguredAllowedOrigins)
         {
-            policy.WithOrigins(allowedOrigins)
+            policy.WithOrigins(configuredAllowedOrigins)
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         }
-        else
+        else if (isDevelopment)
         {
             policy.AllowAnyOrigin()
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         }
+        else
+        {
+            // Fail closed in non-development when explicit allowed origins are missing.
+        }
     });
 });
 
 var app = builder.Build();
+
+if (!isDevelopment && !hasConfiguredAllowedOrigins)
+{
+    app.Logger.LogWarning("CORS:AllowedOrigins is not configured outside development. Cross-origin browser requests will be blocked.");
+}
+
+if (!isDevelopment && string.IsNullOrWhiteSpace(jwtSigningKey))
+{
+    app.Logger.LogWarning("JwtAuth:SigningKey is not configured outside development. JWTs currently fall back to the API key secret; set a dedicated signing key for production.");
+}
+
+if (swaggerEnabled && !isDevelopment)
+{
+    app.Logger.LogWarning("Swagger is enabled outside development. Keep Swagger__Enabled disabled by default and only turn it on intentionally.");
+}
 
 // Global exception handler
 app.UseExceptionHandler(errorApp =>
@@ -321,8 +342,11 @@ var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
 app.Urls.Add($"http://*:{port}");
 
 // Swagger
-app.UseSwagger();
-app.UseSwaggerUI();
+if (swaggerEnabled)
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // HTTP pipeline
 app.UseCors("FrontendPolicy");

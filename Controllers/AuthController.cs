@@ -7,7 +7,7 @@ namespace SmartBets.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-[Authorize]
+[Authorize(Roles = "admin")]
 public class AuthController : ControllerBase
 {
     private readonly JwtTokenService _jwtTokenService;

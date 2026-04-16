@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
@@ -7,6 +8,7 @@ using SmartBets.Entities;
 namespace SmartBets.Controllers;
 
 [ApiController]
+[Authorize(Roles = "admin")]
 [Route("api/admin/supported-leagues")]
 public class AdminSupportedLeaguesController : ControllerBase
 {

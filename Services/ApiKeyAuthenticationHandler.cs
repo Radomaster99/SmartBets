@@ -2,8 +2,6 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
-using SmartBets.Hubs;
-
 namespace SmartBets.Services;
 
 public class ApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
@@ -31,11 +29,6 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationS
         }
 
         var providedToken = Request.Headers["X-API-KEY"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(providedToken) &&
-            Request.Path.StartsWithSegments(LiveOddsHub.Route))
-        {
-            providedToken = Request.Query["access_token"].FirstOrDefault();
-        }
 
         if (string.IsNullOrWhiteSpace(providedToken))
         {

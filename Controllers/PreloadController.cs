@@ -4,6 +4,7 @@ using SmartBets.Services;
 namespace SmartBets.Controllers;
 
 [ApiController]
+[Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
 [Route("api/[controller]")]
 public class PreloadController : ControllerBase
 {

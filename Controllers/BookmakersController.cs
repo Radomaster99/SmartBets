@@ -24,6 +24,7 @@ public class BookmakersController : ControllerBase
         _syncStateService = syncStateService;
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync-reference")]
     public async Task<IActionResult> SyncReference(CancellationToken cancellationToken)
     {
@@ -49,6 +50,7 @@ public class BookmakersController : ControllerBase
         });
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(
         [FromQuery] long leagueId,

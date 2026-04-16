@@ -24,6 +24,7 @@ public class StandingsController : ControllerBase
         _syncStateService = syncStateService;
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(
         [FromQuery] long leagueId,

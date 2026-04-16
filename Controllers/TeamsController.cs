@@ -27,6 +27,7 @@ public class TeamsController : ControllerBase
         _syncStateService = syncStateService;
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(
         [FromQuery] int season,
@@ -178,6 +179,7 @@ public class TeamsController : ControllerBase
             : Ok(team);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("statistics/sync")]
     public async Task<IActionResult> SyncStatistics(
         [FromQuery] long leagueId,

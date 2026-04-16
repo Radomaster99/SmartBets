@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartBets.Data;
@@ -24,6 +25,7 @@ public class CountriesController : ControllerBase
         _syncStateService = syncStateService;
     }
 
+    [Authorize(Roles = "admin")]
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(CancellationToken cancellationToken)
     {
@@ -64,6 +66,7 @@ public class CountriesController : ControllerBase
         return Ok(countries);
     }
 
+    [Authorize(Roles = "admin")]
     [HttpGet("debug-count")]
     public async Task<IActionResult> DebugCount(CancellationToken cancellationToken)
     {

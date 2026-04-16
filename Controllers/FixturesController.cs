@@ -50,6 +50,7 @@ public class FixturesController : ControllerBase
         _syncStateService = syncStateService ?? throw new ArgumentNullException(nameof(syncStateService));
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(
         [FromQuery] int season,
@@ -140,6 +141,7 @@ public class FixturesController : ControllerBase
         });
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync-upcoming")]
     public async Task<IActionResult> SyncUpcoming(
         [FromQuery] long leagueId,
@@ -179,6 +181,7 @@ public class FixturesController : ControllerBase
         });
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync-live-status")]
     public async Task<IActionResult> SyncLiveStatus(
         [FromQuery] long? leagueId,
@@ -196,6 +199,7 @@ public class FixturesController : ControllerBase
         return Ok(result);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("{apiFixtureId:long}/sync-match-center")]
     public async Task<IActionResult> SyncMatchCenter(
         long apiFixtureId,
@@ -215,6 +219,7 @@ public class FixturesController : ControllerBase
         return Ok(result);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync-live-match-center")]
     public async Task<IActionResult> SyncLiveMatchCenter(
         [FromQuery] long? leagueId,
@@ -244,6 +249,7 @@ public class FixturesController : ControllerBase
         return Ok(result);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("{apiFixtureId:long}/sync-preview")]
     public async Task<IActionResult> SyncPreview(
         long apiFixtureId,
@@ -261,6 +267,7 @@ public class FixturesController : ControllerBase
         return Ok(result);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("sync-upcoming-previews")]
     public async Task<IActionResult> SyncUpcomingPreviews(
         [FromQuery] long? leagueId,
@@ -443,6 +450,7 @@ public class FixturesController : ControllerBase
         return Ok(corners);
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
     [HttpPost("{apiFixtureId:long}/sync-corners")]
     public async Task<IActionResult> SyncFixtureCorners(
         long apiFixtureId,
