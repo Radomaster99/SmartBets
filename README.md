@@ -45,6 +45,7 @@ Stage 3 preview infrastructure:
 - Swagger е включен по подразбиране само в development
 - ако `ApiAuth:Token` е настроен, всички непублични endpoint-и изискват header `X-API-KEY`
 - admin frontend flow вече може да ползва `POST /api/admin/auth/login`, `GET /api/admin/auth/me` и `POST /api/admin/auth/logout` с `httpOnly` cookie session
+- default admin cookie name е `oddsdetector_admin`
 - sync/admin/debug endpoint-ите са admin-only
 - ако `CORS:AllowedOrigins` липсва извън development, browser cross-origin достъпът се блокира
 - при explicit `CORS:AllowedOrigins` backend-ът позволява credentialed browser requests, което е нужно за admin cookie session flows

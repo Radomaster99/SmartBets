@@ -6,7 +6,7 @@ public class AdminAuthOptions
 {
     public string? Username { get; set; }
     public string? Password { get; set; }
-    public string CookieName { get; set; } = "smartbets_admin";
+    public string CookieName { get; set; } = "oddsdetector_admin";
     public int SessionHours { get; set; } = 12;
     public string CookieSameSite { get; set; } = nameof(SameSiteMode.Lax);
     public string? CookieDomain { get; set; }
@@ -50,7 +50,7 @@ public class AdminAuthOptions
     public string GetCookieName()
     {
         return string.IsNullOrWhiteSpace(CookieName)
-            ? "smartbets_admin"
+            ? "oddsdetector_admin"
             : CookieName.Trim();
     }
 

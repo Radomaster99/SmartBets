@@ -2771,6 +2771,7 @@ Cookie notes:
 - the cookie is `httpOnly`
 - outside development it is `Secure`
 - `SameSite` is configurable through `AdminAuth:CookieSameSite`
+- default cookie name is `oddsdetector_admin`
 - if the frontend talks to the backend cross-origin, browser requests must include credentials and the origin must be listed in `CORS:AllowedOrigins`
 - for cross-site admin cookie usage the usual production setup is `AdminAuth:CookieSameSite=None` over HTTPS
 
