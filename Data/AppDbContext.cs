@@ -30,6 +30,7 @@ public class AppDbContext : DbContext
     public DbSet<TheOddsLiveOdd> TheOddsLiveOdds => Set<TheOddsLiveOdd>();
     public DbSet<TheOddsLeagueMapping> TheOddsLeagueMappings => Set<TheOddsLeagueMapping>();
     public DbSet<TheOddsRuntimeSetting> TheOddsRuntimeSettings => Set<TheOddsRuntimeSetting>();
+    public DbSet<ContentDocument> ContentDocuments => Set<ContentDocument>();
     public DbSet<PreMatchOdd> PreMatchOdds => Set<PreMatchOdd>();
     public DbSet<OddsOpenClose> OddsOpenCloses => Set<OddsOpenClose>();
     public DbSet<OddsMovement> OddsMovements => Set<OddsMovement>();
@@ -1004,6 +1005,37 @@ public class AppDbContext : DbContext
                 .HasMaxLength(200);
 
             entity.HasIndex(x => x.SettingKey)
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<ContentDocument>(entity =>
+        {
+            entity.ToTable("content_documents");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.ContentKey)
+                .HasColumnName("content_key")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.PayloadJson)
+                .HasColumnName("payload_json")
+                .IsRequired();
+
+            entity.Property(x => x.CreatedAtUtc)
+                .HasColumnName("created_at_utc");
+
+            entity.Property(x => x.UpdatedAtUtc)
+                .HasColumnName("updated_at_utc");
+
+            entity.Property(x => x.UpdatedBy)
+                .HasColumnName("updated_by")
+                .HasMaxLength(200);
+
+            entity.HasIndex(x => x.ContentKey)
                 .IsUnique();
         });
 

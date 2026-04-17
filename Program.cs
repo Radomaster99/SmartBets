@@ -248,6 +248,7 @@ builder.Services.AddScoped<SyncStateService>();
 builder.Services.AddScoped<PreloadSyncService>();
 builder.Services.AddScoped<HistoricalBootstrapService>();
 builder.Services.AddScoped<StandingsSyncService>();
+builder.Services.AddScoped<ContentStorageService>();
 builder.Services.AddScoped<CoreDataAutomationOrchestrator>();
 builder.Services.AddScoped<CoreAutomationCatalogRefreshJobService>();
 builder.Services.AddScoped<CoreAutomationTeamsRollingJobService>();

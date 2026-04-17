@@ -3348,3 +3348,114 @@ EF migration:
 
 SQL fallback:
 - `sql/stage13_the_odds_viewer_refresh_state.sql`
+
+## 35. Stage 14: Global Content Storage
+
+Stage 14 moves the admin-managed marketing and curated homepage content from browser-local storage to backend storage.
+
+Current managed collections:
+- bonus codes
+- hero banners
+- side ads
+- popular leagues
+
+Important contract note:
+- each content endpoint stores and returns a raw JSON array
+- the backend does not currently impose a stricter item schema for these collections
+- if no content has been saved yet, the endpoint returns `[]`
+
+### 35.1 Public Read Endpoints
+
+Base route:
+
+`/api/content`
+
+Public read endpoints:
+- `GET /api/content/bonus-codes`
+- `GET /api/content/hero-banners`
+- `GET /api/content/side-ads`
+- `GET /api/content/popular-leagues`
+
+Behavior:
+- these endpoints are public
+- they return the currently stored JSON array for the requested collection
+- if the collection has not been initialized yet, they return:
+
+```json
+[]
+```
+
+### 35.2 Admin Read/Write Endpoints
+
+Base route:
+
+`/api/admin/content`
+
+Admin endpoints:
+- `GET /api/admin/content/bonus-codes`
+- `PUT /api/admin/content/bonus-codes`
+- `GET /api/admin/content/hero-banners`
+- `PUT /api/admin/content/hero-banners`
+- `GET /api/admin/content/side-ads`
+- `PUT /api/admin/content/side-ads`
+- `GET /api/admin/content/popular-leagues`
+- `PUT /api/admin/content/popular-leagues`
+
+Auth:
+- all `/api/admin/content/*` endpoints are `admin-only`
+
+PUT request body:
+- must be a JSON array
+
+Validation:
+- if the request body is not a JSON array, the backend returns `400 BadRequest`
+
+PUT behavior:
+- creates the collection row on first save
+- replaces the stored JSON array for that collection on every update
+- tracks `UpdatedAtUtc` and `UpdatedBy` internally
+
+### 35.3 Storage Model
+
+New table:
+- `content_documents`
+
+Stored fields:
+- `ContentKey`
+- `PayloadJson`
+- `CreatedAtUtc`
+- `UpdatedAtUtc`
+- `UpdatedBy`
+
+Current `ContentKey` values:
+- `bonus-codes`
+- `hero-banners`
+- `side-ads`
+- `popular-leagues`
+
+### 35.4 Recommended Frontend Usage
+
+Public site:
+- read from:
+  - `GET /api/content/bonus-codes`
+  - `GET /api/content/hero-banners`
+  - `GET /api/content/side-ads`
+  - `GET /api/content/popular-leagues`
+
+Admin panel:
+- load current values through:
+  - `GET /api/admin/content/...`
+- save full arrays through:
+  - `PUT /api/admin/content/...`
+
+Current design note:
+- the backend intentionally stores the full array as provided by the admin UI
+- this avoids locking the system into a premature item schema while the production admin panel is still settling
+
+### 35.5 Database Apply
+
+EF migration:
+- `Migrations/20260417163000_Stage14ContentStorage.cs`
+
+SQL fallback:
+- `sql/stage14_content_storage.sql`
