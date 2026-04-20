@@ -2614,7 +2614,7 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `OddsMidIntervalHours = 3`
 - `OddsNearIntervalMinutes = 40`
 - `OddsFinalIntervalMinutes = 20`
-- `LiveOddsIntervalSeconds = 30`
+- `LiveOddsIntervalSeconds = 40`
 - `MaxLiveOddsLeaguesPerCycle = 10`
 - `RepairIntervalHours = 4`
 - `AllowAllLiveOddsMarkets = false`
