@@ -2609,11 +2609,12 @@ Default `CoreDataAutomation` timings in `appsettings.json`:
 - `FixtureHotIntervalMinutes = 120`
 - `FixtureHotLookbackHours = 10`
 - `FixtureHotLookaheadHours = 24`
-- `OddsLookaheadHours = 48`
+- `OddsLookaheadHours = 144`
 - `OddsFarIntervalHours = 6`
 - `OddsMidIntervalHours = 3`
 - `OddsNearIntervalMinutes = 40`
 - `OddsFinalIntervalMinutes = 20`
+- `MaxOddsFixturesPerCycle = 24`
 - `LiveOddsIntervalSeconds = 40`
 - `MaxLiveOddsLeaguesPerCycle = 10`
 - `RepairIntervalHours = 4`

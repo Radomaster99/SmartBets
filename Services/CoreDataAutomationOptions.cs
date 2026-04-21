@@ -34,7 +34,7 @@ public class CoreDataAutomationOptions
     public int FixtureHotLookaheadHours { get; set; } = 24;
     public int MaxHotFixtureLeagueSeasonsPerCycle { get; set; } = 8;
     public bool EnablePreMatchOddsAutoSync { get; set; } = true;
-    public int OddsLookaheadHours { get; set; } = 48;
+    public int OddsLookaheadHours { get; set; } = 144;
     public int OddsFarWindowHours { get; set; } = 24;
     public int OddsNearWindowHours { get; set; } = 6;
     public int OddsFarIntervalHours { get; set; } = 6;
@@ -42,7 +42,7 @@ public class CoreDataAutomationOptions
     public int OddsNearIntervalMinutes { get; set; } = 40;
     public int OddsFinalWindowMinutes { get; set; } = 60;
     public int OddsFinalIntervalMinutes { get; set; } = 20;
-    public int MaxOddsFixturesPerCycle { get; set; } = 12;
+    public int MaxOddsFixturesPerCycle { get; set; } = 24;
     public bool EnableLiveOddsAutoSync { get; set; } = true;
     public bool AllowAllLiveOddsMarkets { get; set; } = false;
     public int LiveOddsIntervalSeconds { get; set; } = 40;
