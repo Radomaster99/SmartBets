@@ -960,10 +960,17 @@ public class FixturesController : ControllerBase
 
         var bestOdds = await GetCurrentBestOddsAsync(fixture, marketName, cancellationToken);
         var latestOddsCollectedAtUtc = await GetCurrentOddsCollectedAtUtcAsync(fixture, marketName, cancellationToken);
+        var liveOddsSummary = (await _liveOddsService.GetFixtureOddsSummariesAsync(
+                new[] { fixture.ApiFixtureId },
+                cancellationToken))
+            .FirstOrDefault();
+
+        var fixtureDto = MapFixture(fixture);
+        fixtureDto.LiveOddsSummary = liveOddsSummary;
 
         return new FixtureDetailDto
         {
-            Fixture = MapFixture(fixture),
+            Fixture = fixtureDto,
             BestOdds = bestOdds,
             LatestOddsCollectedAtUtc = latestOddsCollectedAtUtc,
             Freshness = new FixtureFreshnessDto
