@@ -993,7 +993,7 @@ public class TheOddsLiveOddsService
             }
         }
 
-        return summary.BestHomeOdd.HasValue || summary.BestDrawOdd.HasValue || summary.BestAwayOdd.HasValue
+        return HasCompleteSummaryValue(summary)
             ? summary
             : null;
     }
@@ -1084,6 +1084,13 @@ public class TheOddsLiveOddsService
         {
             apply(candidateOdd, bookmaker);
         }
+    }
+
+    private static bool HasCompleteSummaryValue(FixtureLiveOddsSummaryDto summary)
+    {
+        return summary.BestHomeOdd.HasValue &&
+               summary.BestDrawOdd.HasValue &&
+               summary.BestAwayOdd.HasValue;
     }
 
     private static string BuildSnapshotKey(
