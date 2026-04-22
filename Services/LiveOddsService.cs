@@ -473,7 +473,7 @@ public class LiveOddsService
         {
             var lastSnapshotCollectedAtUtc = group.Max(x => x.CollectedAtUtc);
             var selectedRows = latestOnly
-                ? group.Where(x => x.CollectedAtUtc == lastSnapshotCollectedAtUtc).ToList()
+                ? SelectLatestMarketRows(group, fixture)
                 : group.OrderByDescending(x => x.CollectedAtUtc).ToList();
 
             if (selectedRows.Count == 0)
@@ -498,7 +498,11 @@ public class LiveOddsService
                 LastSyncedAtUtc = lastSyncedAtUtc,
                 Values = selectedRows
                     .OrderByDescending(x => x.IsMain ?? false)
-                    .ThenBy(x => x.OutcomeLabel)
+                    .ThenBy(x => GetOutcomeSortOrder(x.OutcomeLabel, fixture.HomeTeamName, fixture.AwayTeamName))
+                    .ThenBy(x => MatchOutcomeNormalizer.Canonicalize(
+                        x.OutcomeLabel,
+                        fixture.HomeTeamName,
+                        fixture.AwayTeamName))
                     .ThenBy(x => x.Line)
                     .Select(x => new LiveOddsValueDto
                     {
@@ -696,15 +700,6 @@ public class LiveOddsService
             })
             .ToListAsync(cancellationToken);
 
-        var liveLatestRows = liveRows
-            .GroupBy(x => new { x.FixtureId, x.ApiBookmakerId })
-            .SelectMany(group =>
-            {
-                var latestCollectedAtUtc = group.Max(x => x.CollectedAtUtc);
-                return group.Where(x => x.CollectedAtUtc == latestCollectedAtUtc);
-            })
-            .ToList();
-
         var preMatchLatestRows = preMatchRows
             .GroupBy(x => new { x.FixtureId, x.ApiBookmakerId })
             .Select(group =>
@@ -722,7 +717,7 @@ public class LiveOddsService
             .OrderBy(x => x.ApiFixtureId)
             .Select(fixture => BuildFixtureOddsSummary(
                 fixture,
-                liveLatestRows.Where(x => x.FixtureId == fixture.FixtureId).ToList(),
+                liveRows.Where(x => x.FixtureId == fixture.FixtureId).ToList(),
                 preMatchLatestRows.Where(x => x.FixtureId == fixture.FixtureId).ToList()))
             .Select(summary => theOddsSummariesByApiFixtureId.TryGetValue(summary.ApiFixtureId, out var theOddsSummary)
                 ? theOddsSummary
@@ -831,7 +826,7 @@ public class LiveOddsService
         if (fixture is null)
             return null;
 
-        var markets = await GetLiveOddsAsync(
+        var markets = await GetLiveOddsWithCatchUpAsync(
             apiFixtureId: apiFixtureId,
             latestOnly: true,
             cancellationToken: cancellationToken);
@@ -1027,7 +1022,18 @@ public class LiveOddsService
 
         foreach (var bookmakerGroup in rows.GroupBy(x => x.Bookmaker))
         {
-            foreach (var row in bookmakerGroup)
+            var latestBookmakerRows = bookmakerGroup
+                .GroupBy(x => GetCanonicalOutcomeKey(
+                    x.OutcomeLabel,
+                    fixture.HomeTeamName,
+                    fixture.AwayTeamName))
+                .Select(group => group
+                    .OrderByDescending(x => x.CollectedAtUtc)
+                    .ThenBy(x => x.Bookmaker)
+                    .First())
+                .ToList();
+
+            foreach (var row in latestBookmakerRows)
             {
                 if (IsHomeOutcome(row.OutcomeLabel, fixture.HomeTeamName))
                 {
@@ -1062,6 +1068,52 @@ public class LiveOddsService
         return HasCompleteSummaryValue(summary)
             ? summary
             : null;
+    }
+
+    private static IReadOnlyList<LiveOddsReadRow> SelectLatestMarketRows(
+        IEnumerable<LiveOddsReadRow> group,
+        FixtureScope fixture)
+    {
+        return group
+            .GroupBy(x => new
+            {
+                OutcomeLabel = MatchOutcomeNormalizer.Canonicalize(
+                    x.OutcomeLabel,
+                    fixture.HomeTeamName,
+                    fixture.AwayTeamName),
+                x.Line
+            })
+            .Select(rows => rows
+                .OrderByDescending(x => x.CollectedAtUtc)
+                .ThenByDescending(x => x.IsMain ?? false)
+                .ThenBy(x => x.OutcomeLabel)
+                .First())
+            .ToList();
+    }
+
+    private static string GetCanonicalOutcomeKey(
+        string? outcomeLabel,
+        string homeTeamName,
+        string awayTeamName)
+    {
+        return MatchOutcomeNormalizer.Canonicalize(outcomeLabel, homeTeamName, awayTeamName);
+    }
+
+    private static int GetOutcomeSortOrder(
+        string? outcomeLabel,
+        string homeTeamName,
+        string awayTeamName)
+    {
+        if (IsHomeOutcome(outcomeLabel, homeTeamName))
+            return 0;
+
+        if (IsDrawOutcome(outcomeLabel))
+            return 1;
+
+        if (IsAwayOutcome(outcomeLabel, awayTeamName))
+            return 2;
+
+        return 3;
     }
 
     private static FixtureLiveOddsSummaryDto? BuildPreMatchSummary(
