@@ -523,10 +523,19 @@ public class TheOddsLiveOddsService
             })
             .ToListAsync(cancellationToken);
 
+        var latestRows = rows
+            .GroupBy(x => new { x.FixtureId, x.BookmakerKey, x.MarketKey })
+            .SelectMany(group =>
+            {
+                var latestCollectedAtUtc = group.Max(x => x.CollectedAtUtc);
+                return group.Where(x => x.CollectedAtUtc == latestCollectedAtUtc);
+            })
+            .ToList();
+
         return fixtures
             .Select(fixture => BuildSummary(
                 fixture,
-                rows.Where(x => x.FixtureId == fixture.FixtureId).ToList()))
+                latestRows.Where(x => x.FixtureId == fixture.FixtureId).ToList()))
             .Where(x => x is not null)
             .Cast<FixtureLiveOddsSummaryDto>()
             .OrderBy(x => x.ApiFixtureId)
@@ -583,20 +592,7 @@ public class TheOddsLiveOddsService
         {
             var lastSnapshotCollectedAtUtc = group.Max(x => x.CollectedAtUtc);
             var selectedRows = latestOnly
-                ? group
-                    .GroupBy(x => new
-                    {
-                        OutcomeName = CanonicalizeOutcomeName(
-                            x.OutcomeName,
-                            fixture.HomeTeamName,
-                            fixture.AwayTeamName),
-                        x.Point
-                    })
-                    .Select(rows => rows
-                        .OrderByDescending(x => x.CollectedAtUtc)
-                        .ThenBy(x => x.OutcomeName)
-                        .First())
-                    .ToList()
+                ? group.Where(x => x.CollectedAtUtc == lastSnapshotCollectedAtUtc).ToList()
                 : group.OrderByDescending(x => x.CollectedAtUtc).ToList();
 
             if (selectedRows.Count == 0)
@@ -624,21 +620,11 @@ public class TheOddsLiveOddsService
                 LastSnapshotCollectedAtUtc = lastSnapshotCollectedAtUtc,
                 LastSyncedAtUtc = lastSyncedAtUtc,
                 Values = selectedRows
-                    .OrderBy(x => GetOutcomeSortOrder(
-                        x.OutcomeName,
-                        fixture.HomeTeamName,
-                        fixture.AwayTeamName))
-                    .ThenBy(x => CanonicalizeOutcomeName(
-                        x.OutcomeName,
-                        fixture.HomeTeamName,
-                        fixture.AwayTeamName))
+                    .OrderBy(x => x.OutcomeName)
                     .ThenBy(x => x.Point)
                     .Select(x => new LiveOddsValueDto
                     {
-                        OutcomeLabel = CanonicalizeOutcomeName(
-                            x.OutcomeName,
-                            fixture.HomeTeamName,
-                            fixture.AwayTeamName),
+                        OutcomeLabel = x.OutcomeName,
                         Line = x.Point?.ToString(CultureInfo.InvariantCulture),
                         Odd = x.Price
                     })
@@ -733,10 +719,7 @@ public class TheOddsLiveOddsService
 
                     result.SnapshotsProcessed++;
 
-                    var normalizedOutcomeName = CanonicalizeOutcomeName(
-                        outcome.Name,
-                        fixture.HomeTeamName,
-                        fixture.AwayTeamName);
+                    var normalizedOutcomeName = NormalizeNullable(outcome.Name) ?? string.Empty;
                     var snapshotKey = BuildSnapshotKey(
                         fixture.FixtureId,
                         bookmaker.Key,
@@ -948,48 +931,34 @@ public class TheOddsLiveOddsService
             CollectedAtUtc = rows.Max(x => x.CollectedAtUtc)
         };
 
-        foreach (var bookmakerGroup in rows.GroupBy(x => x.BookmakerTitle))
+        foreach (var row in rows)
         {
-            var latestBookmakerRows = bookmakerGroup
-                .GroupBy(x => CanonicalizeOutcomeName(
-                    x.OutcomeName,
-                    fixture.HomeTeamName,
-                    fixture.AwayTeamName))
-                .Select(group => group
-                    .OrderByDescending(x => x.CollectedAtUtc)
-                    .ThenBy(x => x.BookmakerTitle)
-                    .First())
-                .ToList();
-
-            foreach (var row in latestBookmakerRows)
+            if (IsHomeOutcome(row.OutcomeName, fixture.HomeTeamName))
             {
-                if (IsHomeOutcome(row.OutcomeName, fixture.HomeTeamName))
-                {
-                    ApplyBestOdd(row.Price, row.BookmakerTitle, summary.BestHomeOdd, summary.BestHomeBookmaker,
-                        (odd, bookmaker) =>
-                        {
-                            summary.BestHomeOdd = odd;
-                            summary.BestHomeBookmaker = bookmaker;
-                        });
-                }
-                else if (IsDrawOutcome(row.OutcomeName))
-                {
-                    ApplyBestOdd(row.Price, row.BookmakerTitle, summary.BestDrawOdd, summary.BestDrawBookmaker,
-                        (odd, bookmaker) =>
-                        {
-                            summary.BestDrawOdd = odd;
-                            summary.BestDrawBookmaker = bookmaker;
-                        });
-                }
-                else if (IsAwayOutcome(row.OutcomeName, fixture.AwayTeamName))
-                {
-                    ApplyBestOdd(row.Price, row.BookmakerTitle, summary.BestAwayOdd, summary.BestAwayBookmaker,
-                        (odd, bookmaker) =>
-                        {
-                            summary.BestAwayOdd = odd;
-                            summary.BestAwayBookmaker = bookmaker;
-                        });
-                }
+                ApplyBestOdd(row.Price, row.BookmakerTitle, summary.BestHomeOdd, summary.BestHomeBookmaker,
+                    (odd, bookmaker) =>
+                    {
+                        summary.BestHomeOdd = odd;
+                        summary.BestHomeBookmaker = bookmaker;
+                    });
+            }
+            else if (IsDrawOutcome(row.OutcomeName))
+            {
+                ApplyBestOdd(row.Price, row.BookmakerTitle, summary.BestDrawOdd, summary.BestDrawBookmaker,
+                    (odd, bookmaker) =>
+                    {
+                        summary.BestDrawOdd = odd;
+                        summary.BestDrawBookmaker = bookmaker;
+                    });
+            }
+            else if (IsAwayOutcome(row.OutcomeName, fixture.AwayTeamName))
+            {
+                ApplyBestOdd(row.Price, row.BookmakerTitle, summary.BestAwayOdd, summary.BestAwayBookmaker,
+                    (odd, bookmaker) =>
+                    {
+                        summary.BestAwayOdd = odd;
+                        summary.BestAwayBookmaker = bookmaker;
+                    });
             }
         }
 
@@ -1027,40 +996,6 @@ public class TheOddsLiveOddsService
             NormalizeTeamName(outcomeLabel),
             NormalizeTeamName(awayTeamName),
             StringComparison.Ordinal);
-    }
-
-    private static string CanonicalizeOutcomeName(
-        string? outcomeName,
-        string homeTeamName,
-        string awayTeamName)
-    {
-        if (IsHomeOutcome(outcomeName, homeTeamName))
-            return homeTeamName.Trim();
-
-        if (IsDrawOutcome(outcomeName))
-            return "Draw";
-
-        if (IsAwayOutcome(outcomeName, awayTeamName))
-            return awayTeamName.Trim();
-
-        return NormalizeNullable(outcomeName) ?? string.Empty;
-    }
-
-    private static int GetOutcomeSortOrder(
-        string? outcomeName,
-        string homeTeamName,
-        string awayTeamName)
-    {
-        if (IsHomeOutcome(outcomeName, homeTeamName))
-            return 0;
-
-        if (IsDrawOutcome(outcomeName))
-            return 1;
-
-        if (IsAwayOutcome(outcomeName, awayTeamName))
-            return 2;
-
-        return 3;
     }
 
     private static void ApplyBestOdd(
