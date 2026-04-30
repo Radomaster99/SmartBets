@@ -21,16 +21,38 @@ public class CoreAutomationFixturesRollingJobService
 
     public async Task<CoreAutomationSingleJobResult> RunLiveStatusAsync(CancellationToken cancellationToken)
     {
-        var liveStatusResult = await _fixtureLiveStatusSyncService.SyncLiveFixturesAsync(
-            activeOnly: false,
-            cancellationToken: cancellationToken);
+        var result = new CoreAutomationSingleJobResult();
 
-        return new CoreAutomationSingleJobResult
+        try
         {
-            RequestsUsed = liveStatusResult.RequestsUsed,
-            ProcessedItems = liveStatusResult.FixturesProcessed,
-            Action = $"fixtures-live:{liveStatusResult.FixturesProcessed}"
-        };
+            var liveStatusResult = await _fixtureLiveStatusSyncService.SyncLiveFixturesAsync(
+                activeOnly: false,
+                cancellationToken: cancellationToken);
+
+            result.RequestsUsed = liveStatusResult.RequestsUsed;
+            result.ProcessedItems = liveStatusResult.FixturesProcessed;
+            result.Action = $"fixtures-live:{liveStatusResult.FixturesProcessed}";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Live status rolling job failed.");
+            await _syncErrorService.RecordAsync(
+                "fixtures_live",
+                "background_sync",
+                "core_automation",
+                ex.Message,
+                cancellationToken: cancellationToken);
+
+            result.RequestsUsed = 1;
+            result.Action = "fixtures-live:failed";
+            result.Failed = true;
+        }
+
+        return result;
     }
 
     public async Task<CoreAutomationTargetJobResult> RunRollingAsync(

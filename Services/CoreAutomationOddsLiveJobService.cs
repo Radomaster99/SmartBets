@@ -18,14 +18,36 @@ public class CoreAutomationOddsLiveJobService
 
     public async Task<CoreAutomationSingleJobResult> RunBetTypesAsync(CancellationToken cancellationToken)
     {
-        var result = await _liveOddsService.SyncLiveBetTypesAsync(cancellationToken);
+        var jobResult = new CoreAutomationSingleJobResult();
 
-        return new CoreAutomationSingleJobResult
+        try
         {
-            RequestsUsed = 1,
-            ProcessedItems = result.Processed,
-            Action = $"live-bet-types:{result.Processed}"
-        };
+            var result = await _liveOddsService.SyncLiveBetTypesAsync(cancellationToken);
+
+            jobResult.RequestsUsed = 1;
+            jobResult.ProcessedItems = result.Processed;
+            jobResult.Action = $"live-bet-types:{result.Processed}";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Live odds bet types refresh failed.");
+            await _syncErrorService.RecordAsync(
+                "live_bet_types",
+                "background_sync",
+                "core_automation",
+                ex.Message,
+                cancellationToken: cancellationToken);
+
+            jobResult.RequestsUsed = 1;
+            jobResult.Action = "live-bet-types:failed";
+            jobResult.Failed = true;
+        }
+
+        return jobResult;
     }
 
     public async Task<CoreAutomationTargetJobResult> RunAsync(

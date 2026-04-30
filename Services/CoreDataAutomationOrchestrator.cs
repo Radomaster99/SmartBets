@@ -489,7 +489,11 @@ public class CoreDataAutomationOrchestrator
         if (liveStatusDue && remainingRequests > 0)
         {
             var liveStatusResult = await _fixturesRollingJobService.RunLiveStatusAsync(cancellationToken);
-            state.LastLiveStatusRunUtc = nowUtc;
+            if (!liveStatusResult.Failed)
+            {
+                state.LastLiveStatusRunUtc = nowUtc;
+            }
+
             remainingRequests -= liveStatusResult.RequestsUsed;
             actualRequests += liveStatusResult.RequestsUsed;
             processedItems += liveStatusResult.ProcessedItems;
@@ -650,7 +654,11 @@ public class CoreDataAutomationOrchestrator
         if (betTypesDue && remainingRequests > 0)
         {
             var betTypesResult = await _oddsLiveJobService.RunBetTypesAsync(cancellationToken);
-            state.LastLiveBetTypesRunUtc = nowUtc;
+            if (!betTypesResult.Failed)
+            {
+                state.LastLiveBetTypesRunUtc = nowUtc;
+            }
+
             remainingRequests -= betTypesResult.RequestsUsed;
             actualRequests += betTypesResult.RequestsUsed;
             processedItems += betTypesResult.ProcessedItems;

@@ -17,6 +17,7 @@ public class FixtureLiveStatusSyncService
         .ToArray();
 
     private static readonly TimeSpan CatchUpLookbackWindow = TimeSpan.FromHours(6);
+    private static readonly TimeSpan StaleLiveCatchUpLookbackWindow = TimeSpan.FromHours(24);
     private static readonly TimeSpan CatchUpLookaheadWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan CatchUpMinResyncInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndgameCatchUpMinResyncInterval = TimeSpan.FromMinutes(1);
@@ -260,6 +261,7 @@ public class FixtureLiveStatusSyncService
         CancellationToken cancellationToken)
     {
         var catchUpWindowStart = nowUtc.Add(-CatchUpLookbackWindow);
+        var staleLiveWindowStart = nowUtc.Add(-StaleLiveCatchUpLookbackWindow);
         var catchUpWindowEnd = nowUtc.Add(CatchUpLookaheadWindow);
         var staleSyncThreshold = nowUtc.Add(-EndgameCatchUpMinResyncInterval);
         var endgameElapsedMinutes = _automationOptionsMonitor.CurrentValue.GetLiveStatusEndgameElapsedMinutes();
@@ -269,7 +271,8 @@ public class FixtureLiveStatusSyncService
             .Where(x =>
                 x.Status != null &&
                 (UpcomingStatuses.Contains(x.Status) || LiveStatuses.Contains(x.Status)) &&
-                x.KickoffAt >= catchUpWindowStart &&
+                (x.KickoffAt >= catchUpWindowStart ||
+                 (LiveStatuses.Contains(x.Status) && x.KickoffAt >= staleLiveWindowStart)) &&
                 x.KickoffAt <= catchUpWindowEnd &&
                 (!x.LastLiveStatusSyncedAtUtc.HasValue || x.LastLiveStatusSyncedAtUtc <= staleSyncThreshold));
 
